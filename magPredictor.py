@@ -8,6 +8,7 @@ import numpy as np
 import pyqtgraph as pg
 from filterpy.kalman import UnscentedKalmanFilter as UKF
 from filterpy.kalman import MerweScaledSigmaPoints
+from filterpy.common import Q_discrete_white_noise
 
 from readData import readSerial, plotB
 from dataViewer import magViewer
@@ -16,35 +17,35 @@ from dataViewer import magViewer
 class MagPredictor():
     def __init__(self):
         self.slaves = 9
-        self.stateNum = 10  # x, y, z, vx, vy, vz, q0, q1, q2, q3
+        self.stateNum = 10  # x, vx, y, vy, z, vz, q0, q1, q2, q3
         self.moment = 0.29    # 胶囊的磁矩[A*m^2]
-        self.distance = 0.12 # sensor之间的距离[m]
+        self.distance = 0.12  # sensor之间的距离[m]
         self.sensorLoc = np.array([[-self.distance, self.distance, 0], [0, self.distance, 0], [self.distance, self.distance, 0],
                                     [-self.distance, 0, 0], [0, 0, 0], [self.distance, 0, 0],
                                     [-self.distance, -self.distance, 0], [0, -self.distance, 0], [self.distance, -self.distance, 0]])
 
-        self.defaultR = 300
         self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3-self.stateNum)
-        self.dt = 0.01
+        self.dt = 0.03  # 时间间隔[s]
         self.ukf = UKF(dim_x=self.stateNum, dim_z=self.slaves*3, dt=self.dt, points=self.points, fx=self.f, hx=self.h)
-        self.ukf.x = np.array([-0.03, 0.06, 0.001, 0, 0, 0, 0, 1, 0, 0])  # 初始值
+        self.ukf.x = np.array([-0.03, 0, 0.06, 0, 0.002, 0, 1, 0, 0, 0])  # 初始值
         self.ukf.R = np.diag((100, 100, 200) * self.slaves)
-        self.ukf.Q = np.eye(self.stateNum) * 0.005
-        # self.ukf.Q[0: 3, 0: 3] = Q_discrete_white_noise(3, dt=0.2, var=2.)
-        # self.ukf.Q[3: 7, 3: 7] = Q_discrete_white_noise(4, dt=0.2, var=0.5)
         self.ukf.P *= 50
-        self.eps = 0
-        self.A = np.eye(self.stateNum)
-        for i in range(3):
-            self.A[0 + i, i + 3] = self.dt
 
+        self.ukf.Q = np.zeros((self.stateNum, self.stateNum))
+        # 将加速度作为过程噪声来源，Qi = [[0.5*dt^4, 0.5*dt^3], [0.5*dt^3, dt^2]]
+        self.ukf.Q[0: 6, 0: 6] = Q_discrete_white_noise(dim=2, dt=self.dt, var=10, block_size=3)
+        for i in range(6, 10):
+            self.ukf.Q[i, i] = 0.05
 
     def f(self, x, dt):
-        return np.hstack(np.dot(self.A, x.reshape(self.stateNum, 1)))
+        A = np.eye(self.stateNum)
+        for i in range(0, 6, 2):
+            A[i, i + 1] = dt
+        return np.hstack(np.dot(A, x.reshape(self.stateNum, 1)))
 
     def h(self, state):
         B = np.zeros((self.slaves, 3))
-        x, y, z = state[0: 3]
+        x, y, z = state[0:6:2]
         q0, q1, q2, q3 = state[6: self.stateNum]
         mNorm = np.array([self.q2m(q0, q1, q2, q3)])
         rotNorm = np.array([self.q2m(q0, q1, q2, q3)] * 9)
@@ -65,14 +66,14 @@ class MagPredictor():
         mz = (q0 * q0 - q1 * q1 - q2 * q2 + q3 * q3) / qq2
         return [round(mx, 2), round(my, 2), round(mz, 2)]
 
-    def run(self, magFilterDataShare):
-        pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
-        vel = (round(self.ukf.x[3], 3), round(self.ukf.x[4], 3), round(self.ukf.x[5], 3))
+    def run(self, magOriginDataShare):
+        pos = (round(self.ukf.x[0], 3), round(self.ukf.x[2], 3), round(self.ukf.x[4], 3))
+        vel = (round(self.ukf.x[1], 3), round(self.ukf.x[3], 3), round(self.ukf.x[5], 3))
         m = self.q2m(self.ukf.x[6], self.ukf.x[7], self.ukf.x[8], self.ukf.x[9])
         print(r'pos={}m, vel={}m/s, e_moment={}'.format(pos, vel, m))
         # print(self.ukf.y)
 
-        z = np.hstack(magFilterDataShare[:])
+        z = np.hstack(magOriginDataShare[:])
         self.ukf.predict()
         self.ukf.update(z)
 
@@ -129,9 +130,9 @@ def plotError(mp, slavePlot=0):
 if __name__ == '__main__':
     # 开启多进程读取数据
     magOriginDataShare = multiprocessing.Array('f', range(27))
-    magFilterDataShare = multiprocessing.Array('f', range(27))
+    # magFilterDataShare = multiprocessing.Array('f', range(27))
 
-    processRead = multiprocessing.Process(target=readSerial, args=(magOriginDataShare, magFilterDataShare))
+    processRead = multiprocessing.Process(target=readSerial, args=(magOriginDataShare,))
     processRead.daemon = True
     processRead.start()
 
@@ -156,4 +157,4 @@ if __name__ == '__main__':
     # threadplotError.start()
 
     while True:
-        mp.run(magFilterDataShare)
+        mp.run(magOriginDataShare)

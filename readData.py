@@ -11,21 +11,22 @@ import pyqtgraph as pg
 
 
 
-def readSerial(magOriginDataShare, magFilterDataShare, slavePlot=0):
+def readSerial(magOriginDataShare, slavePlot=0):
     port = list(serial.tools.list_ports.comports())[-1][0]
     ser = serial.Serial(port, 9600, timeout=0.5, parity=serial.PARITY_NONE, rtscts=1)
     slaves = 9
     B200 = np.zeros((slaves, 3, 200))
     magOriginData = np.zeros((slaves, 3), dtype=np.int)
     magOffsetData = np.zeros((slaves, 3), dtype=np.int)
-    magFilterData = np.zeros((slaves * 3, 1))
+    # magFilterData = np.zeros((slaves * 3, 1))
     offsetOk = False
     n = 0
 
-    kf = KF(dim_x=slaves * 3, dim_z=slaves * 3)
-    kf.P *= 190
-    kf.R = np.diag((50, 50, 530) * slaves)
-    kf.H = np.eye(slaves * 3)
+    # kf = KF(dim_x=slaves * 3, dim_z=slaves * 3)
+    # kf.P *= 190
+    # kf.Q = np.eye(slaves * 3) * 0.5
+    # kf.R = np.diag((15, 15, 15) * slaves)
+    # kf.H = np.eye(slaves * 3)
 
     while True:
         if ser.in_waiting:
@@ -55,10 +56,10 @@ def readSerial(magOriginDataShare, magFilterDataShare, slavePlot=0):
                 B200 = np.zeros((slaves, 3, 200))
 
             # 使用kalman滤波进行数据平滑
-            kf.predict()
-            kf.update(magOriginData.reshape(-1, 1))
-            magFilterData[:] = kf.x[:]
-            magFilterDataShare[:] = np.hstack(magFilterData[:])[:]
+            # kf.predict()
+            # kf.update(magOriginData.reshape(-1, 1))
+            # magFilterData[:] = kf.x[:]
+            # magFilterDataShare[:] = np.hstack(magFilterData[:])[:]
             n += 1
 
 def plotMag(magOriginData, magFilterData):
@@ -109,7 +110,7 @@ def plotMag(magOriginData, magFilterData):
             ax.legend(loc=2)
         plt.pause(0.001)
 
-def plotB(magOriginDataShare, magFilterDataShare, slavePlot=0):
+def plotB(magOriginDataShare, slavePlot=0):
     app = pg.Qt.QtGui.QApplication([])
     win = pg.GraphicsLayoutWidget(show=True, title="Mag3D Viewer - By Liu Liu")
     win.resize(1500, 500)
@@ -135,7 +136,7 @@ def plotB(magOriginDataShare, magFilterDataShare, slavePlot=0):
     pz.setLabel('left', 'B', units='mG')
     pz.setLabel('bottom', 'points', units='1')
     curve1z = pz.plot(pen='r', name='origin')
-    curve2z = pz.plot(pen='g', name='KF')
+    # curve2z = pz.plot(pen='g', name='KF')
 
 
     n, Bx, Bx_KF, By_KF, Bz_KF, By, Bz, i = Queue(), Queue(), Queue(), Queue(), Queue(), Queue(), Queue(), 0
@@ -147,15 +148,15 @@ def plotB(magOriginDataShare, magFilterDataShare, slavePlot=0):
         Bx.put(magOriginDataShare[slavePlot * 3])
         By.put(magOriginDataShare[slavePlot * 3 + 1])
         Bz.put(magOriginDataShare[slavePlot * 3 + 2])
-        Bx_KF.put(magFilterDataShare[slavePlot * 3])
-        By_KF.put(magFilterDataShare[slavePlot * 3 + 1])
-        Bz_KF.put(magFilterDataShare[slavePlot * 3 + 2])
+        # Bx_KF.put(magFilterDataShare[slavePlot * 3])
+        # By_KF.put(magFilterDataShare[slavePlot * 3 + 1])
+        # Bz_KF.put(magFilterDataShare[slavePlot * 3 + 2])
 
         if i > 100:
-            for q in [n, Bx, Bx_KF, By_KF, Bz_KF, By, Bz]:
+            for q in [n, Bx, By, Bz]:
                 q.get()
 
-        for (curve, Bqueue) in [(curve1x, Bx), (curve2x, Bx_KF), (curve1y, By), (curve2y, By_KF), (curve1z, Bz), (curve2z, Bz_KF)]:
+        for (curve, Bqueue) in [(curve1x, Bx), (curve2x, Bx_KF), (curve1y, By)]:
             curve.setData(n.queue, Bqueue.queue)
 
     timer = pg.Qt.QtCore.QTimer()
@@ -173,7 +174,7 @@ def complement2origin(x):
 
 if __name__ == "__main__":
     # multiprocessing.set_start_method('spawn')
-    slavePlot = 8
+    slavePlot = 0
     magOriginDataShare = multiprocessing.Array('f', range(27))
     magFilterDataShare = multiprocessing.Array('f', range(27))
 
@@ -184,4 +185,4 @@ if __name__ == "__main__":
     time.sleep(0.5)
     # while True:
     #     plotMag(magOriginDataShare, magFilterDataShare)
-    plotB(magOriginDataShare, magFilterDataShare, slavePlot=slavePlot)
+    plotB(magOriginDataShare, slavePlot=slavePlot)

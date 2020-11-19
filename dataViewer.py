@@ -153,9 +153,9 @@ class Mag3DViewer(QWidget):
     def window_showData(self):
         self.text_Postext, self.text_Rottext, self.text_Mtext = "", "", ""
         for i in range(self.MagNum):
-            self.text_Postext += "   x=%.1f y=%.1f y=%.1f \n" % (self.MagPosXYZ[0, i], self.MagPosXYZ[1, i], self.MagPosXYZ[2, i])
-            self.text_Rottext += "   theta=%.2f, phi=%.2f  \n" % (self.MagPolarAngle[0, i], self.MagPolarAngle[1, i])
-            self.text_Mtext += "  %.2f\n" % self.MagMoment[i]
+            self.text_Postext += "  x=%.1f y=%.1f z=%.1f" % (self.MagPosXYZ[0, i], self.MagPosXYZ[1, i], self.MagPosXYZ[2, i])
+            self.text_Rottext += "  theta=%.2f, phi=%.2f" % (self.MagPolarAngle[0, i], self.MagPolarAngle[1, i])
+            self.text_Mtext += "  %.2f" % self.MagMoment[i]
         self.text_Timetext = "   %.3f (s)" % self.Timecost
         self.PosText.setText(self.text_Postext)
         self.RotText.setText(self.text_Rottext)
@@ -248,8 +248,8 @@ def magViewer(mp):
     magViewer.setGeometry(QRect(800, 200, 900, 600))
     # magViewer.show()
     def updateData():
-        state_pos = np.concatenate((mp.ukf.x[0: 3] * 100, mp.ukf.x[6: 10]))
-        state = np.append(state_pos, mp.moment)
+        state_pos_q = np.concatenate((mp.ukf.x[0:6:2] * 100, mp.ukf.x[6: 10]))
+        state = np.append(state_pos_q, mp.moment)
         magViewer.onRender(state)
 
     t = QtCore.QTimer()
