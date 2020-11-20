@@ -18,7 +18,7 @@ class Mag3DViewer(QWidget):
         # icon = QtGui.QIcon()
         # icon.addPixmap(QtGui.QPixmap(_fromUtf8("QtIcon/png/Safari Black.png")), QtGui.QIcon.Normal, QtGui.QIcon.On)
         # self.setWindowIcon(icon)
-        self.setWindowTitle('Mag3D Viewer - By Liu Liu')
+        self.setWindowTitle('Mag3D Viewer')
         self.Area = DockArea()
 
         self.h = QtGui.QHBoxLayout()
@@ -153,8 +153,8 @@ class Mag3DViewer(QWidget):
     def window_showData(self):
         self.text_Postext, self.text_Rottext, self.text_Mtext = "", "", ""
         for i in range(self.MagNum):
-            self.text_Postext += "  x=%.1f y=%.1f z=%.1f" % (self.MagPosXYZ[0, i], self.MagPosXYZ[1, i], self.MagPosXYZ[2, i])
-            self.text_Rottext += "  theta=%.2f, phi=%.2f" % (self.MagPolarAngle[0, i], self.MagPolarAngle[1, i])
+            self.text_Postext += "  x=%.1fcm y=%.1fcm z=%.1fcm" % (self.MagPosXYZ[0, i], self.MagPosXYZ[1, i], self.MagPosXYZ[2, i])
+            self.text_Rottext += "  theta=%.2fdeg, phi=%.2fdeg" % (self.MagPolarAngle[0, i], self.MagPolarAngle[1, i])
             self.text_Mtext += "  %.2f" % self.MagMoment[i]
         self.text_Timetext = "   %.3f (s)" % self.Timecost
         self.PosText.setText(self.text_Postext)
@@ -250,6 +250,7 @@ def magViewer(mp):
     def updateData():
         state_pos_q = np.concatenate((mp.ukf.x[0:6:2] * 100, mp.ukf.x[6: 10]))
         state = np.append(state_pos_q, mp.moment)
+        # state = np.concatenate((mp.ukf.x[0:6:2] * 100, mp.ukf.x[6:]))   # 将磁矩值作为预测量
         magViewer.onRender(state)
 
     t = QtCore.QTimer()

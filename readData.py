@@ -110,58 +110,58 @@ def plotMag(magOriginData, magFilterData):
             ax.legend(loc=2)
         plt.pause(0.001)
 
-def plotB(magOriginDataShare, slavePlot=0):
+def plotB(magOriginDataShare ,mp , slavePlot=(1, 5, 9)):
     app = pg.Qt.QtGui.QApplication([])
-    win = pg.GraphicsLayoutWidget(show=True, title="Mag3D Viewer - By Liu Liu")
-    win.resize(1500, 500)
+    win = pg.GraphicsLayoutWidget(show=True, title="Mag3D Viewer")
+    win.resize(1500, 900)
     win.setWindowTitle("slave {}: origin VS KF".format(slavePlot))
     pg.setConfigOptions(antialias=True)
 
-    px = win.addPlot(title="Bx")
-    px.addLegend()
-    px.setLabel('left', 'B', units='mG')
-    px.setLabel('bottom', 'points', units='1')
-    curve1x = px.plot(pen='r', name='origin')
-    curve2x = px.plot(pen='g', name='KF')
-
-    py = win.addPlot(title="By")
-    py.addLegend()
-    py.setLabel('left', 'B', units='mG')
-    py.setLabel('bottom', 'points', units='1')
-    curve1y = py.plot(pen='r', name='origin')
-    curve2y = py.plot(pen='g', name='KF')
-
-    pz = win.addPlot(title="Bz")
-    pz.addLegend()
-    pz.setLabel('left', 'B', units='mG')
-    pz.setLabel('bottom', 'points', units='1')
-    curve1z = pz.plot(pen='r', name='origin')
-    # curve2z = pz.plot(pen='g', name='KF')
-
-
-    n, Bx, Bx_KF, By_KF, Bz_KF, By, Bz, i = Queue(), Queue(), Queue(), Queue(), Queue(), Queue(), Queue(), 0
+    n = Queue()
+    curves = []  # []
+    datas = []   # [s1_Bx_Origin, s1_Bx_Predict, s1_By_Origin, s1_By_Predict, ... ]
+    for i in slavePlot:
+        for Bi in ['Bx', 'By', 'Bz']:
+            p = win.addPlot(title='slave {}--'.format(i) + Bi)
+            p.addLegend()
+            p.setLabel('left', 'B', units='mG')
+            p.setLabel('bottom', 'points', units='1')
+            cOrigin = p.plot(pen='r', name='Origin')
+            cPredict = p.plot(pen='g', name='Predict')
+            curves.append(cOrigin)
+            curves.append(cPredict)
+            datas.append(Queue())    # origin
+            datas.append(Queue())    # Predict
+        win.nextRow()
+    i = 0
+    # n, Bx, Bx2, By2, Bz2, By, Bz, i = Queue(), Queue(), Queue(), Queue(), Queue(), Queue(), Queue(), 0
 
     def update():
-        nonlocal i, slavePlot
+        nonlocal i
+        magPredictData = mp.h(mp.ukf.x)
         i += 1
         n.put(i)
-        Bx.put(magOriginDataShare[slavePlot * 3])
-        By.put(magOriginDataShare[slavePlot * 3 + 1])
-        Bz.put(magOriginDataShare[slavePlot * 3 + 2])
-        # Bx_KF.put(magFilterDataShare[slavePlot * 3])
-        # By_KF.put(magFilterDataShare[slavePlot * 3 + 1])
-        # Bz_KF.put(magFilterDataShare[slavePlot * 3 + 2])
+        for slaveIndex, slave in enumerate(slavePlot):
+            for Bindex in range(3):
+                datas[slaveIndex * 6 + Bindex * 2].put(magOriginDataShare[(slave-1) * 3 + Bindex])
+                datas[slaveIndex * 6 + Bindex * 2 + 1].put(magPredictData[(slave-1) * 3 + Bindex])
+        # Bx.put(magOriginDataShare[slave * 3])
+        # By.put(magOriginDataShare[slave * 3 + 1])
+        # Bz.put(magOriginDataShare[slave * 3 + 2])
+        # Bx2.put(magPredictData[slave * 3])
+        # By2.put(magPredictData[slave * 3 + 1])
+        # Bz2.put(magPredictData[slave * 3 + 2])
 
         if i > 100:
-            for q in [n, Bx, By, Bz]:
+            n.get()
+            for q in datas:
                 q.get()
-
-        for (curve, Bqueue) in [(curve1x, Bx), (curve2x, Bx_KF), (curve1y, By)]:
-            curve.setData(n.queue, Bqueue.queue)
+        for (curve, data) in zip(curves, datas):
+            curve.setData(n.queue, data.queue)
 
     timer = pg.Qt.QtCore.QTimer()
     timer.timeout.connect(update)
-    timer.start(30)
+    timer.start(100)
 
     if (sys.flags.interactive != 1) or not hasattr(pg.Qt.QtCore, 'PYQT_VERSION'):
         pg.Qt.QtGui.QApplication.instance().exec_()
@@ -172,9 +172,10 @@ def complement2origin(x):
     else:
         return x
 
+
 if __name__ == "__main__":
     # multiprocessing.set_start_method('spawn')
-    slavePlot = 0
+    slavePlot = (1, 5, 9)
     magOriginDataShare = multiprocessing.Array('f', range(27))
     magFilterDataShare = multiprocessing.Array('f', range(27))
 
