@@ -25,15 +25,19 @@ class MagPredictor():
                                     [-self.distance, -self.distance, 0], [0, -self.distance, 0], [self.distance, -self.distance, 0]])
 
         self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3-self.stateNum)
-        self.dt = 0.03  # 时间间隔[s]
+        self.dt = 0.05  # 时间间隔[s]
         self.ukf = UKF(dim_x=self.stateNum, dim_z=self.slaves*3, dt=self.dt, points=self.points, fx=self.f, hx=self.h)
-        self.ukf.x = np.array([0, 0, 0, 0, 0.04, 0, 1, 0, 0, 0])  # 初始值
-        self.ukf.R = np.diag((100, 100, 200) * self.slaves)
-        self.ukf.P *= 50
+        self.ukf.x = np.array([0.01, 0, 0, 0, 0.003, 0, 1, 0, 0, 0])  # 初始值
+        self.ukf.R = np.diag((100, 100, 100) * self.slaves)
+
+        self.ukf.P = np.eye(self.stateNum) * 0.001
+        for i in range(0, 6, 2):
+            self.ukf.P[i, i] = 0.01
+            self.ukf.P[i+1, i+1] = 0.0001
 
         self.ukf.Q = np.zeros((self.stateNum, self.stateNum))
         # 将加速度作为过程噪声来源，Qi = [[0.5*dt^4, 0.5*dt^3], [0.5*dt^3, dt^2]]
-        self.ukf.Q[0: 6, 0: 6] = Q_discrete_white_noise(dim=2, dt=self.dt, var=10, block_size=3)
+        self.ukf.Q[0: 6, 0: 6] = Q_discrete_white_noise(dim=2, dt=self.dt, var=1, block_size=3)
         for i in range(6, 10):
             self.ukf.Q[i, i] = 0.05
 
@@ -79,28 +83,28 @@ class MagPredictor():
 
 def plotError(mp, slavePlot=0):
     app = pg.Qt.QtGui.QApplication([])
-    win = pg.GraphicsLayoutWidget(show=True, title="Mag3D Viewer - By Liu Liu")
+    win = pg.GraphicsLayoutWidget(show=True, title="Mag3D Viewer")
     win.setWindowTitle("slave {}: residual".format(slavePlot))
     win.resize(1500, 500)
     pg.setConfigOptions(antialias=True)
 
-    px = win.addPlot(title="Bx")
+    px = win.addPlot(title="Px")
     px.addLegend()
-    px.setLabel('left', 'B', units='mG')
+    px.setLabel('left', 'Px', units='m')
     px.setLabel('bottom', 'points', units='1')
     curvex = px.plot(pen='r')
 
-    py = win.addPlot(title="By")
+    py = win.addPlot(title="x")
     py.addLegend()
-    py.setLabel('left', 'B', units='mG')
+    py.setLabel('left', 'x', units='m')
     py.setLabel('bottom', 'points', units='1')
-    curvey = py.plot(pen='r')
+    curvey = py.plot(pen='g')
 
-    pz = win.addPlot(title="Bz")
+    pz = win.addPlot(title="y")
     pz.addLegend()
-    pz.setLabel('left', 'B', units='mG')
+    pz.setLabel('left', 'y', units='m')
     pz.setLabel('bottom', 'points', units='1')
-    curvez = pz.plot(pen='r')
+    curvez = pz.plot(pen='b')
 
     n, Rx, Ry, Rz, i = Queue(), Queue(), Queue(), Queue(), 0
 
@@ -108,11 +112,11 @@ def plotError(mp, slavePlot=0):
         nonlocal i, slavePlot
         i += 1
         n.put(i)
-        Rx.put(mp.ukf.y[slavePlot * 3])
-        Ry.put(mp.ukf.y[slavePlot * 3 + 1])
-        Rz.put(mp.ukf.y[slavePlot * 3 + 2])
+        Rx.put(mp.ukf.P[0, 0])
+        Ry.put(mp.ukf.x[0])
+        Rz.put(mp.ukf.x[2])
 
-        if i > 100:
+        if i > 500:
             for q in [n, Rx, Ry, Rz]:
                 q.get()
 
@@ -142,9 +146,9 @@ if __name__ == '__main__':
     mp = MagPredictor()
 
     # 启动mag3D视图
-    threadmagViewer = threading.Thread(target=magViewer, args=(mp,))
-    # threadmagViewer.daemon = True
-    threadmagViewer.start()
+    # threadmagViewer = threading.Thread(target=magViewer, args=(mp,))
+    # # threadmagViewer.daemon = True
+    # threadmagViewer.start()
 
     # 实时显示sensor的值
     # plotBwindow = threading.Thread(target=plotB, args=(magOriginDataShare, mp, (1, 5, 9)))
@@ -152,9 +156,9 @@ if __name__ == '__main__':
     # plotBwindow.start()
 
     # 显示残差
-    # threadplotError = threading.Thread(target=plotError, args=(mp, 0))
-    # # threadplotError.daemon = True
-    # threadplotError.start()
+    threadplotError = threading.Thread(target=plotError, args=(mp, 0))
+    # threadplotError.daemon = True
+    threadplotError.start()
 
     while True:
         mp.run(magOriginDataShare)
