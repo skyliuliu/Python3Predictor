@@ -27,19 +27,19 @@ class MagPredictor():
         self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3-self.stateNum)
         self.dt = 0.05  # 时间间隔[s]
         self.ukf = UKF(dim_x=self.stateNum, dim_z=self.slaves*3, dt=self.dt, points=self.points, fx=self.f, hx=self.h)
-        self.ukf.x = np.array([0.01, 0, 0, 0, 0.003, 0, 1, 0, 0, 0])  # 初始值
+        self.ukf.x = np.array([0.001, 0, 0.001, 0, 0.003, 0, 1, 0, 0, 0])  # 初始值
         self.ukf.R = np.diag((100, 100, 100) * self.slaves)
 
         self.ukf.P = np.eye(self.stateNum) * 0.001
         for i in range(0, 6, 2):
-            self.ukf.P[i, i] = 0.01
+            self.ukf.P[i, i] = 0.016
             self.ukf.P[i+1, i+1] = 0.0001
 
         self.ukf.Q = np.zeros((self.stateNum, self.stateNum))
         # 将加速度作为过程噪声来源，Qi = [[0.5*dt^4, 0.5*dt^3], [0.5*dt^3, dt^2]]
         self.ukf.Q[0: 6, 0: 6] = Q_discrete_white_noise(dim=2, dt=self.dt, var=1, block_size=3)
         for i in range(6, 10):
-            self.ukf.Q[i, i] = 0.05
+            self.ukf.Q[i, i] = 0.01
 
     def f(self, x, dt):
         A = np.eye(self.stateNum)
