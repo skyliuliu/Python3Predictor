@@ -110,7 +110,7 @@ def plotMag(magOriginData, magFilterData):
             ax.legend(loc=2)
         plt.pause(0.001)
 
-def plotB(magOriginDataShare ,mp , slavePlot=(1, 5, 9)):
+def plotB(magOriginDataShare , slavePlot=(1, 5, 9), mp=None):
     app = pg.Qt.QtGui.QApplication([])
     win = pg.GraphicsLayoutWidget(show=True, title="Mag3D Viewer")
     win.resize(1500, 900)
@@ -138,13 +138,14 @@ def plotB(magOriginDataShare ,mp , slavePlot=(1, 5, 9)):
 
     def update():
         nonlocal i
-        magPredictData = mp.h(mp.ukf.x)
+        magPredictData = mp.h(mp.ukf.x) if mp else np.zeros(27)
         i += 1
         n.put(i)
         for slaveIndex, slave in enumerate(slavePlot):
             for Bindex in range(3):
                 datas[slaveIndex * 6 + Bindex * 2].put(magOriginDataShare[(slave-1) * 3 + Bindex])
                 datas[slaveIndex * 6 + Bindex * 2 + 1].put(magPredictData[(slave-1) * 3 + Bindex])
+                # datas[slaveIndex * 3 + Bindex ].put(magOriginDataShare[(slave-1) * 3 + Bindex])
         # Bx.put(magOriginDataShare[slave * 3])
         # By.put(magOriginDataShare[slave * 3 + 1])
         # Bz.put(magOriginDataShare[slave * 3 + 2])
@@ -179,7 +180,7 @@ if __name__ == "__main__":
     magOriginDataShare = multiprocessing.Array('f', range(27))
     magFilterDataShare = multiprocessing.Array('f', range(27))
 
-    processRead = multiprocessing.Process(target=readSerial, args=(magOriginDataShare, magFilterDataShare, slavePlot))
+    processRead = multiprocessing.Process(target=readSerial, args=(magOriginDataShare, slavePlot))
     processRead.daemon = True
     processRead.start()
 

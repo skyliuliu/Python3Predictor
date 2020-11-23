@@ -1,4 +1,5 @@
 import multiprocessing
+import math
 import time
 from queue import Queue
 import sys
@@ -27,8 +28,8 @@ class MagPredictor():
         self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3-self.stateNum)
         self.dt = 0.05  # 时间间隔[s]
         self.ukf = UKF(dim_x=self.stateNum, dim_z=self.slaves*3, dt=self.dt, points=self.points, fx=self.f, hx=self.h)
-        self.ukf.x = np.array([0.001, 0, 0.001, 0, 0.003, 0, 1, 0, 0, 0])  # 初始值
-        self.ukf.R = np.diag((100, 100, 100) * self.slaves)
+        self.ukf.x = np.array([0.001, 0, 0.001, 0, 0.04, 0, 1, 0, 0, 0])  # 初始值
+        self.ukf.R = np.ones((self.slaves * 3, self.slaves * 3)) * 10    # 先初始化，后面自适应赋值
 
         self.ukf.P = np.eye(self.stateNum) * 0.001
         for i in range(0, 6, 2):
@@ -37,7 +38,7 @@ class MagPredictor():
 
         self.ukf.Q = np.zeros((self.stateNum, self.stateNum))
         # 将加速度作为过程噪声来源，Qi = [[0.5*dt^4, 0.5*dt^3], [0.5*dt^3, dt^2]]
-        self.ukf.Q[0: 6, 0: 6] = Q_discrete_white_noise(dim=2, dt=self.dt, var=1, block_size=3)
+        self.ukf.Q[0: 6, 0: 6] = Q_discrete_white_noise(dim=2, dt=self.dt, var=0.01, block_size=3)
         for i in range(6, 10):
             self.ukf.Q[i, i] = 0.01
 
@@ -74,10 +75,13 @@ class MagPredictor():
         pos = (round(self.ukf.x[0], 3), round(self.ukf.x[2], 3), round(self.ukf.x[4], 3))
         vel = (round(self.ukf.x[1], 3), round(self.ukf.x[3], 3), round(self.ukf.x[5], 3))
         m = self.q2m(self.ukf.x[6], self.ukf.x[7], self.ukf.x[8], self.ukf.x[9])
-        print(r'pos={}m, vel={}m/s, e_moment={}'.format(pos, vel, m))
-        # print(self.ukf.y)
+        # print(r'pos={}m, vel={}m/s, e_moment={}'.format(pos, vel, m))
 
         z = np.hstack(magOriginDataShare[:])
+        for i in range(self.slaves * 3):
+            # sensor的方差随B的关系式为：Bvar =  2*E(-16*B^4) - 2*E(-27*B^3) + 2*E(-8*B^2) + 1*E(-18*B) + 10
+            Bm = magOriginDataShare[i]
+            self.ukf.R[i, i] = 2 * math.exp(-16) * Bm ** 4 - 2 * math.exp(-27) * Bm ** 3 + 2 * math.exp(-8) * Bm * Bm + math.exp(-18) * Bm + 11
         self.ukf.predict()
         self.ukf.update(z)
 
@@ -146,19 +150,17 @@ if __name__ == '__main__':
     mp = MagPredictor()
 
     # 启动mag3D视图
-    # threadmagViewer = threading.Thread(target=magViewer, args=(mp,))
-    # # threadmagViewer.daemon = True
-    # threadmagViewer.start()
+    threadmagViewer = threading.Thread(target=magViewer, args=(mp,))
+    threadmagViewer.start()
 
     # 实时显示sensor的值
-    # plotBwindow = threading.Thread(target=plotB, args=(magOriginDataShare, mp, (1, 5, 9)))
+    # plotBwindow = threading.Thread(target=plotB, args=(magOriginDataShare, (1, 5, 9), mp))
     # plotBwindow.setDaemon(True)
     # plotBwindow.start()
 
     # 显示残差
-    threadplotError = threading.Thread(target=plotError, args=(mp, 0))
-    # threadplotError.daemon = True
-    threadplotError.start()
+    # threadplotError = threading.Thread(target=plotError, args=(mp, 0))
+    # threadplotError.start()
 
     while True:
         mp.run(magOriginDataShare)
