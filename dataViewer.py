@@ -153,8 +153,8 @@ class Mag3DViewer(QWidget):
     def window_showData(self):
         self.text_Postext, self.text_Rottext, self.text_Mtext = "", "", ""
         for i in range(self.MagNum):
-            self.text_Postext += "  x=%.1fcm y=%.1fcm z=%.1fcm" % (self.MagPosXYZ[0, i], self.MagPosXYZ[1, i], self.MagPosXYZ[2, i])
-            self.text_Rottext += "  theta=%.2fdeg, phi=%.2fdeg" % (self.MagPolarAngle[0, i], self.MagPolarAngle[1, i])
+            self.text_Postext += " x=%.1fcm y=%.1fcm z=%.1fcm" % (self.MagPosXYZ[0, i], self.MagPosXYZ[1, i], self.MagPosXYZ[2, i])
+            self.text_Rottext += " theta=%ddeg, phi=%ddeg" % (self.MagPolarAngle[0, i], self.MagPolarAngle[1, i])
             self.text_Mtext += "  %.2f" % self.MagMoment[i]
         self.text_Timetext = "   %.3f (s)" % self.Timecost
         self.PosText.setText(self.text_Postext)

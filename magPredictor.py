@@ -28,7 +28,7 @@ class MagPredictor():
         self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3-self.stateNum)
         self.dt = 0.05  # 时间间隔[s]
         self.ukf = UKF(dim_x=self.stateNum, dim_z=self.slaves*3, dt=self.dt, points=self.points, fx=self.f, hx=self.h)
-        self.ukf.x = np.array([0.001, 0, 0.001, 0, 0.04, 0, 1, 0, 0, 0])  # 初始值
+        self.ukf.x = np.array([0.0, 0, 0.0, 0, 0.125, 0, 1, 0, 0, 0])  # 初始值
         self.ukf.R = np.ones((self.slaves * 3, self.slaves * 3)) * 10    # 先初始化，后面自适应赋值
 
         self.ukf.P = np.eye(self.stateNum) * 0.001
@@ -80,7 +80,7 @@ class MagPredictor():
         z = np.hstack(magOriginDataShare[:])
         for i in range(self.slaves * 3):
             # sensor的方差随B的关系式为：Bvar =  2*E(-16*B^4) - 2*E(-27*B^3) + 2*E(-8*B^2) + 1*E(-18*B) + 10
-            Bm = magOriginDataShare[i]
+            Bm = magOriginDataShare[i] + magBgDataShare[i]
             self.ukf.R[i, i] = 2 * math.exp(-16) * Bm ** 4 - 2 * math.exp(-27) * Bm ** 3 + 2 * math.exp(-8) * Bm * Bm + math.exp(-18) * Bm + 11
         self.ukf.predict()
         self.ukf.update(z)
@@ -138,9 +138,10 @@ def plotError(mp, slavePlot=0):
 if __name__ == '__main__':
     # 开启多进程读取数据
     magOriginDataShare = multiprocessing.Array('f', range(27))
+    magBgDataShare = multiprocessing.Array('f', range(27))
     magPredictData = multiprocessing.Array('f', range(27))
 
-    processRead = multiprocessing.Process(target=readSerial, args=(magOriginDataShare,))
+    processRead = multiprocessing.Process(target=readSerial, args=(magOriginDataShare, magBgDataShare))
     processRead.daemon = True
     processRead.start()
 

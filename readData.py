@@ -11,12 +11,13 @@ import pyqtgraph as pg
 
 
 
-def readSerial(magOriginDataShare, slavePlot=0):
+def readSerial(magOriginDataShare, magBgDataShare, slavePlot=0):
     port = list(serial.tools.list_ports.comports())[-1][0]
     ser = serial.Serial(port, 9600, timeout=0.5, parity=serial.PARITY_NONE, rtscts=1)
     slaves = 9
     B200 = np.zeros((slaves, 3, 200))
     magOriginData = np.zeros((slaves, 3), dtype=np.int)
+    magBgDataShare = np.zeros((slaves, 3), dtype=np.int)
     magOffsetData = np.zeros((slaves, 3), dtype=np.int)
     # magFilterData = np.zeros((slaves * 3, 1))
     offsetOk = False
@@ -42,10 +43,11 @@ def readSerial(magOriginDataShare, slavePlot=0):
             if (not offsetOk) and n < 300:
                 magOffsetData += magOriginData
             elif (not offsetOk) and n == 300:
+                magBgDataShare = magOffsetData // 300
                 offsetOk = True
-                print('Calibrate ok!')
+                print('Calibrate ok!\nmagBgDataShare-slave5-z={}mGs'.format(magBgDataShare[4, 2]))
             else:
-                magOriginData -= magOffsetData // 300
+                magOriginData -= magBgDataShare
                 # print('Bx={},By={},Bz={}'.format(magOriginData[4, 0], magOriginData[4, 1], magOriginData[4, 2]))
 
             magOriginDataShare[:] = np.hstack(magOriginData)[:]
