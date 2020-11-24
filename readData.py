@@ -9,7 +9,13 @@ import multiprocessing
 from filterpy.kalman import KalmanFilter as KF
 import pyqtgraph as pg
 
-
+SLAVES = 9
+MOMENT = 0.3   # 胶囊的磁矩[A*m^2]
+DISTANCE = 0.12  # sensor之间的距离[m]
+SENSORLOC = np.array(   # sensor的分布
+    [[-DISTANCE, DISTANCE, 0], [0, DISTANCE, 0], [DISTANCE, DISTANCE, 0],
+     [-DISTANCE, 0, 0], [0, 0, 0], [DISTANCE, 0, 0],
+     [-DISTANCE, -DISTANCE, 0], [0, -DISTANCE, 0], [DISTANCE, -DISTANCE, 0]])
 
 def readSerial(magOriginDataShare, magBgDataShare, slavePlot=0):
     port = list(serial.tools.list_ports.comports())[-1][0]
@@ -112,7 +118,7 @@ def plotMag(magOriginData, magFilterData):
             ax.legend(loc=2)
         plt.pause(0.001)
 
-def plotB(magOriginDataShare , slavePlot=(1, 5, 9), mp=None):
+def plotB(magOriginDataShare , slavePlot=(1, 5, 9), state=None):
     app = pg.Qt.QtGui.QApplication([])
     win = pg.GraphicsLayoutWidget(show=True, title="Mag3D Viewer")
     win.resize(1500, 900)
@@ -120,7 +126,7 @@ def plotB(magOriginDataShare , slavePlot=(1, 5, 9), mp=None):
     pg.setConfigOptions(antialias=True)
 
     n = Queue()
-    curves = []  # []
+    curves = []  
     datas = []   # [s1_Bx_Origin, s1_Bx_Predict, s1_By_Origin, s1_By_Predict, ... ]
     for i in slavePlot:
         for Bi in ['Bx', 'By', 'Bz']:
@@ -136,24 +142,16 @@ def plotB(magOriginDataShare , slavePlot=(1, 5, 9), mp=None):
             datas.append(Queue())    # Predict
         win.nextRow()
     i = 0
-    # n, Bx, Bx2, By2, Bz2, By, Bz, i = Queue(), Queue(), Queue(), Queue(), Queue(), Queue(), Queue(), 0
 
     def update():
         nonlocal i
-        magPredictData = mp.h(mp.ukf.x) if mp else np.zeros(27)
+        magPredictData = h(state) if state else np.zeros(27)
         i += 1
         n.put(i)
         for slaveIndex, slave in enumerate(slavePlot):
             for Bindex in range(3):
                 datas[slaveIndex * 6 + Bindex * 2].put(magOriginDataShare[(slave-1) * 3 + Bindex])
                 datas[slaveIndex * 6 + Bindex * 2 + 1].put(magPredictData[(slave-1) * 3 + Bindex])
-                # datas[slaveIndex * 3 + Bindex ].put(magOriginDataShare[(slave-1) * 3 + Bindex])
-        # Bx.put(magOriginDataShare[slave * 3])
-        # By.put(magOriginDataShare[slave * 3 + 1])
-        # Bz.put(magOriginDataShare[slave * 3 + 2])
-        # Bx2.put(magPredictData[slave * 3])
-        # By2.put(magPredictData[slave * 3 + 1])
-        # Bz2.put(magPredictData[slave * 3 + 2])
 
         if i > 100:
             n.get()
@@ -175,6 +173,27 @@ def complement2origin(x):
     else:
         return x
 
+def q2m(q0, q1, q2, q3):
+    qq2 = (q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3)
+    mx = 2 * (-q0 * q2 + q1 * q3) / qq2
+    my = 2 * (q0 * q1 + q2 * q3) / qq2
+    mz = (q0 * q0 - q1 * q1 - q2 * q2 + q3 * q3) / qq2
+    return [round(mx, 2), round(my, 2), round(mz, 2)]
+
+def h(state):
+    B = np.zeros((9, 3))
+    x, y, z = state[0:6:2]
+    q0, q1, q2, q3 = state[6:10]
+    mNorm = np.array([q2m(q0, q1, q2, q3)])
+    rotNorm = np.array([q2m(q0, q1, q2, q3)] * 9)
+
+    pos = np.array([[x, y, z]] * 9) - SENSORLOC
+    r = np.linalg.norm(pos, axis=1, keepdims=True)
+    posNorm = pos / r
+
+    B = MOMENT * np.multiply(r ** (-3), np.subtract(3 * np.multiply(np.inner(posNorm, mNorm), posNorm), rotNorm)) # 每个sensor的B值[mGs]
+    data = B.reshape(-1)
+    return data
 
 if __name__ == "__main__":
     # multiprocessing.set_start_method('spawn')

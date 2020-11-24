@@ -1,5 +1,6 @@
 from PyQt5.QtWidgets import QWidget
 import numpy as np
+from queue import Queue
 from pyqtgraph.Qt import QtCore, QtGui
 import pyqtgraph as pg
 from pyqtgraph.dockarea import *
@@ -31,6 +32,7 @@ class Mag3DViewer(QWidget):
         self._isPause = False
         self.text_Postext, self.text_Rottext, self.text_Mtext = "\n", "\n", "\n"
         self.MagPosXYZ = np.zeros((3, self.MagNum))
+        self.stdPos = np.zeros(3)
         self.MagMoment = np.zeros(self.MagNum)
         self.MomentXYZ = np.zeros((3, self.MagNum))
         self.MagPolarAngle = np.zeros((2, self.MagNum))
@@ -152,11 +154,11 @@ class Mag3DViewer(QWidget):
 
     def window_showData(self):
         self.text_Postext, self.text_Rottext, self.text_Mtext = "", "", ""
-        for i in range(self.MagNum):
-            self.text_Postext += " x=%.1fcm y=%.1fcm z=%.1fcm" % (self.MagPosXYZ[0, i], self.MagPosXYZ[1, i], self.MagPosXYZ[2, i])
-            self.text_Rottext += " theta=%ddeg, phi=%ddeg" % (self.MagPolarAngle[0, i], self.MagPolarAngle[1, i])
-            self.text_Mtext += "  %.2f" % self.MagMoment[i]
-        self.text_Timetext = "   %.3f (s)" % self.Timecost
+        self.text_Postext += " pos=(%.1f, %.1f, %.1f)cm\n\n std=(%.2f, %.2f, %.2f)cm" % \
+                             (self.MagPosXYZ[0], self.MagPosXYZ[1], self.MagPosXYZ[2], self.stdPos[0], self.stdPos[1], self.stdPos[2])
+        self.text_Rottext += " theta=%ddeg, phi=%ddeg" % (self.MagPolarAngle[0], self.MagPolarAngle[1])
+        self.text_Mtext += "  %.2f A*m^2" % self.MagMoment
+        self.text_Timetext = "   %.3f s" % self.timeCost
         self.PosText.setText(self.text_Postext)
         self.RotText.setText(self.text_Rottext)
         self.MomentText.setText(self.text_Mtext)
@@ -201,22 +203,25 @@ class Mag3DViewer(QWidget):
         else:
             self.PauseBtn.setText('Pause')
 
-    def onRender(self, state):
+    def onRender(self, stateAll):
         if not self._isPause:
             for i in range(self.MagNum):
-                a, b, c, q0, q1, q2, q3, m = state[8 * i:8 * i + 8]
+                x, vx, y, vy, z, vz, q0, q1, q2, q3, m, timeCost, stdX, stdY, stdZ  = stateAll
+                # 单位从m变成cm
+                x, vx, y, vy, z, vz, stdX, stdY, stdZ = x*100, vx*100, y*100, vy*100, z*100, vz*100, stdX*100, stdY*100, stdZ*100
                 axis, angle = qtoAxisAngle(q0, q1, q2, q3)
                 self.sphereMesh[i].resetTransform()
                 self.sphereMesh[i].rotate(angle, -axis[1], axis[0], axis[2])
-                self.sphereMesh[i].translate(-b, a, c)
-
+                self.sphereMesh[i].translate(-y, x, z)
                 self.ArrowMesh[i].resetTransform()
                 self.ArrowMesh[i].rotate(angle, -axis[1], axis[0], axis[2])
-                self.ArrowMesh[i].translate(-b, a, c)
-                self.MagPosXYZ[0:3, i] = a, b, c
+                self.ArrowMesh[i].translate(-y, x, z)
+
+                self.MagPosXYZ[0:3, i] = x, y, z
+                self.stdPos[:] = stdX, stdY, stdZ
                 self.MagMoment[i] = m
                 self.MagPolarAngle[0:2, i] = getMoment_PolarAngle(q0, q1, q2, q3)
-            self.Timecost = state[-1]
+                self.timeCost = timeCost
             self.window_showData()
 
 def qtoAxisAngle(q0, q1, q2, q3):
@@ -242,20 +247,33 @@ def getMoment_PolarAngle(q0, q1, q2, q3, realize=False):
             phi = np.degrees(np.arccos(x/pow((x**2+y**2), 0.5)))
     return np.array([theta, phi])
 
-def magViewer(mp):
+def magViewer(state):
+
     app = QtGui.QApplication([])
     magViewer = Mag3DViewer(1)
     magViewer.setGeometry(QRect(800, 200, 900, 600))
     # magViewer.show()
+    posTemp = [Queue(), Queue(), Queue()]
+    index = 1
     def updateData():
-        state_pos_q = np.concatenate((mp.ukf.x[0:6:2] * 100, mp.ukf.x[6: 10]))
-        state = np.append(state_pos_q, mp.moment)
-        # state = np.concatenate((mp.ukf.x[0:6:2] * 100, mp.ukf.x[6:]))   # 将磁矩值作为预测量
-        magViewer.onRender(state)
+        nonlocal index
+        pos = state[0:6:2]
+
+        for i in range(3):
+            posTemp[i].put(pos[i])
+
+        if index > 50:
+            for j in range(3):
+                posTemp[j].get()
+        index += 1
+        stdPos = [np.std(q.queue) for q in posTemp]
+        stateAll = np.append(state, stdPos)
+        magViewer.onRender(stateAll)
 
     t = QtCore.QTimer()
     t.timeout.connect(updateData)
     t.start(50)
+
     # sys.exit(app.exec())
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         QtGui.QApplication.instance().exec_()
