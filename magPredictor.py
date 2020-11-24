@@ -24,7 +24,7 @@ class MagPredictor():
         self.dt = 0.03  # 时间间隔[s]
         self.ukf = UKF(dim_x=self.stateNum, dim_z=SLAVES*3, dt=self.dt, points=self.points, fx=self.f, hx=h)
         self.ukf.x = np.array([0.0, 0, 0.0, 0, 0.125, 0, 1, 0, 0, 0])  # 初始值
-        self.ukf.R = np.ones((SLAVES * 3, SLAVES * 3)) * 10    # 先初始化，后面自适应赋值
+        self.ukf.R = np.ones((SLAVES * 3, SLAVES * 3)) * 5    # 先初始化，后面自适应赋值
 
         self.ukf.P = np.eye(self.stateNum) * 0.001
         for i in range(0, 6, 2):
@@ -43,18 +43,18 @@ class MagPredictor():
             A[i, i + 1] = dt
         return np.hstack(np.dot(A, x.reshape(self.stateNum, 1)))
 
-    def run(self, magOriginDataShare, state):
+    def run(self, magData, state):
         pos = (round(self.ukf.x[0], 3), round(self.ukf.x[2], 3), round(self.ukf.x[4], 3))
         vel = (round(self.ukf.x[1], 3), round(self.ukf.x[3], 3), round(self.ukf.x[5], 3))
         m = q2m(self.ukf.x[6], self.ukf.x[7], self.ukf.x[8], self.ukf.x[9])
         # print(r'pos={}m, vel={}m/s, e_moment={}'.format(pos, vel, m))
 
-        z = np.hstack(magOriginDataShare[:])
+        z = np.hstack(magData[:])
+        # 自适应 R
         for i in range(SLAVES * 3):
             # sensor的方差随B的关系式为：Bvar =  2*E(-16*B^4) - 2*E(-27*B^3) + 2*E(-8*B^2) + 1*E(-18*B) + 10
-            Bm = magOriginDataShare[i] + magBgDataShare[i]
-            # 自适应 R
-            self.ukf.R[i, i] = 2 * math.exp(-16) * Bm ** 4 - 2 * math.exp(-27) * Bm ** 3 + 2 * math.exp(-8) * Bm * Bm + math.exp(-18) * Bm + 50
+            Bm = magData[i] + magBgDataShare[i]
+            self.ukf.R[i, i] = 2 * math.exp(-16) * Bm ** 4 - 2 * math.exp(-27) * Bm ** 3 + 2 * math.exp(-8) * Bm * Bm + math.exp(-18) * Bm + 10
 
         t0 = datetime.datetime.now()
         self.ukf.predict()
@@ -119,10 +119,11 @@ if __name__ == '__main__':
     # 多进程之间共享数据
     magOriginDataShare = multiprocessing.Array('f', range(27))
     magBgDataShare = multiprocessing.Array('f', range(27))
+    magSmoothData = multiprocessing.Array('f', range(27))
     magPredictData = multiprocessing.Array('f', range(27))
     state = multiprocessing.Array('f', range(12))  #x, vx, y, vy z, vz, q0, q1, q2, q3, moment, timeCost
 
-    pRead = multiprocessing.Process(target=readSerial, args=(magOriginDataShare, magBgDataShare))
+    pRead = multiprocessing.Process(target=readSerial, args=(magOriginDataShare, magSmoothData))
     pRead.daemon = True
     pRead.start()
 
@@ -139,13 +140,13 @@ if __name__ == '__main__':
     pMagViewer.start()
 
     # 实时显示sensor的值
-    # plotBwindow = multiprocessing.Process(target=plotB, args=(magOriginDataShare, (1, 5, 9), state))
-    # plotBwindow.daemon = True
-    # plotBwindow.start()
+    plotBwindow = multiprocessing.Process(target=plotB, args=(magOriginDataShare, (1, 5, 9), state))
+    plotBwindow.daemon = True
+    plotBwindow.start()
 
     # 显示残差
     # threadplotError = threading.Thread(target=plotError, args=(mp, 0))
     # threadplotError.start()
 
     while True:
-        mp.run(magOriginDataShare, state)
+        mp.run(magSmoothData, state)
