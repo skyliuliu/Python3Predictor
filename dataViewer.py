@@ -206,9 +206,9 @@ class Mag3DViewer(QWidget):
     def onRender(self, stateAll):
         if not self._isPause:
             for i in range(self.MagNum):
-                x, vx, y, vy, z, vz, q0, q1, q2, q3, m, timeCost, stdX, stdY, stdZ  = stateAll
+                x, y, z, q0, q1, q2, q3, m, timeCost, stdX, stdY, stdZ  = stateAll
                 # 单位从m变成cm
-                x, vx, y, vy, z, vz, stdX, stdY, stdZ = x*100, vx*100, y*100, vy*100, z*100, vz*100, stdX*100, stdY*100, stdZ*100
+                x, y, z, stdX, stdY, stdZ = x*100, y*100, z*100, stdX*100, stdY*100, stdZ*100
                 axis, angle = qtoAxisAngle(q0, q1, q2, q3)
                 self.sphereMesh[i].resetTransform()
                 self.sphereMesh[i].rotate(angle, -axis[1], axis[0], axis[2])
@@ -257,7 +257,7 @@ def magViewer(state):
     index = 1
     def updateData():
         nonlocal index
-        pos = state[0:6:2]
+        pos = state[0:3]
 
         for i in range(3):
             posTemp[i].put(pos[i])

@@ -17,36 +17,29 @@ from dataViewer import magViewer
 
 
 class MagPredictor():
-    stateNum = 10  # x, vx, y, vy, z, vz, q0, q1, q2, q3
+    stateNum = 7  # x, y, z, q0, q1, q2, q3
    
     def __init__(self):
         self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3-self.stateNum)
         self.dt = 0.03  # 时间间隔[s]
         self.ukf = UKF(dim_x=self.stateNum, dim_z=SLAVES*3, dt=self.dt, points=self.points, fx=self.f, hx=h)
-        self.ukf.x = np.array([0.0, 0, 0.0, 0, 0.125, 0, 1, 0, 0, 0])  # 初始值
-        self.ukf.R = np.ones((SLAVES * 3, SLAVES * 3)) * 5    # 先初始化，后面自适应赋值
+        self.ukf.x = np.array([0.0, 0.0, 0.14, 1, 0, 0, 0])  # 初始值
+        self.ukf.R = np.ones((SLAVES * 3, SLAVES * 3)) * 5    # 先初始化为5，后面自适应赋值
 
         self.ukf.P = np.eye(self.stateNum) * 0.001
-        for i in range(0, 6, 2):
-            self.ukf.P[i, i] = 0.016    # position
-            self.ukf.P[i+1, i+1] = 0.0001   # velocity
 
-        self.ukf.Q = np.zeros((self.stateNum, self.stateNum))
-        # 将加速度作为过程噪声来源，Qi = [[0.5*dt^4, 0.5*dt^3], [0.5*dt^3, dt^2]]
-        self.ukf.Q[0: 6, 0: 6] = Q_discrete_white_noise(dim=2, dt=self.dt, var=0.1, block_size=3)
-        for i in range(6, 10):
+        self.ukf.Q = np.eye(self.stateNum) * 0.01 * self.dt * self.dt     # 将速度作为过程噪声来源，Qi = [v*dt^2]
+
+        for i in range(3, 7):
             self.ukf.Q[i, i] = 0.001
 
     def f(self, x, dt):
         A = np.eye(self.stateNum)
-        for i in range(0, 6, 2):
-            A[i, i + 1] = dt
         return np.hstack(np.dot(A, x.reshape(self.stateNum, 1)))
 
     def run(self, magData, state):
-        pos = (round(self.ukf.x[0], 3), round(self.ukf.x[2], 3), round(self.ukf.x[4], 3))
-        vel = (round(self.ukf.x[1], 3), round(self.ukf.x[3], 3), round(self.ukf.x[5], 3))
-        m = q2m(self.ukf.x[6], self.ukf.x[7], self.ukf.x[8], self.ukf.x[9])
+        pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
+        m = q2m(self.ukf.x[3], self.ukf.x[4], self.ukf.x[5], self.ukf.x[6])
         # print(r'pos={}m, vel={}m/s, e_moment={}'.format(pos, vel, m))
 
         z = np.hstack(magData[:])
@@ -62,7 +55,6 @@ class MagPredictor():
         timeCost = (datetime.datetime.now() - t0).total_seconds()
 
         state[:] = np.concatenate((mp.ukf.x, np.array([MOMENT, timeCost])))  # 输出的结果
-
 
 
 def plotError(mp, slavePlot=0):
@@ -121,7 +113,7 @@ if __name__ == '__main__':
     magBgDataShare = multiprocessing.Array('f', range(27))
     magSmoothData = multiprocessing.Array('f', range(27))
     magPredictData = multiprocessing.Array('f', range(27))
-    state = multiprocessing.Array('f', range(12))  #x, vx, y, vy z, vz, q0, q1, q2, q3, moment, timeCost
+    state = multiprocessing.Array('f', range(9))  #x, y, z, q0, q1, q2, q3, moment, timeCost
 
     pRead = multiprocessing.Process(target=readSerial, args=(magOriginDataShare, magSmoothData))
     pRead.daemon = True

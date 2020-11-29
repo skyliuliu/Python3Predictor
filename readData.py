@@ -179,8 +179,8 @@ def q2m(q0, q1, q2, q3):
 
 def h(state):
     B = np.zeros((9, 3))
-    x, y, z = state[0:6:2]
-    q0, q1, q2, q3 = state[6:10]
+    x, y, z = state[0:3]
+    q0, q1, q2, q3 = state[3:7]
     mNorm = np.array([q2m(q0, q1, q2, q3)])
     rotNorm = np.array([q2m(q0, q1, q2, q3)] * 9)
 
