@@ -1,5 +1,5 @@
+import json
 import numpy as np
-from matplotlib import pyplot as plt
 import serial
 import serial.tools.list_ports
 import sys
@@ -22,9 +22,9 @@ def readSerial(magOriginData, magSmoothData, slavePlot=0):
     ser = serial.Serial(port, 9600, timeout=0.5, parity=serial.PARITY_NONE, rtscts=1)
     slaves = 9
     B200 = np.zeros((slaves, 3, 200))
-    OriginData = np.zeros((slaves, 3), dtype=np.int)
-    magBgData = np.zeros((slaves, 3), dtype=np.int)
-    magOffsetData = np.zeros((slaves, 3), dtype=np.int)
+    OriginData = np.zeros((slaves, 3), dtype=np.float)
+    magBgData = np.zeros((slaves, 3), dtype=np.float)
+    magOffsetData = np.zeros((slaves, 3), dtype=np.float)
     offsetOk = False
     n = 0
 
@@ -32,6 +32,15 @@ def readSerial(magOriginData, magSmoothData, slavePlot=0):
     fls.P *= 200
     fls.R *= 50
     fls.Q *= 0.5
+
+    if offsetOk:
+        f = open('bg.json', 'r')
+        bg = json.load(f)
+        for row in range(SLAVES):
+            for col in range(3):
+                magBgData[row, col] = bg.get('B{}{}'.format(row, col), 0)
+        f.close()
+        print('get background B OK!')
 
     while True:
         if ser.in_waiting:
@@ -49,10 +58,18 @@ def readSerial(magOriginData, magSmoothData, slavePlot=0):
             elif (not offsetOk) and n == 300:
                 magBgData = magOffsetData // 300
                 offsetOk = True
-                print('Calibrate ok!\nBackground B-slave5-z={}mGs'.format(magBgData[4, 2]))
+                print('Calibrate ok!')
+
+                # 保存背景磁场到本地json文件
+                bg = {}
+                for row in range(SLAVES):
+                    for col in range(3):
+                        bg['B{}{}'.format(row, col)] = magBgData[row, col]
+                f = open('bg.json', 'w')
+                json.dump(bg, f, indent=4)
+                f.close()
             else:
                 OriginData -= magBgData
-                # print('Bx={},By={},Bz={}'.format(magOriginData[4, 0], magOriginData[4, 1], magOriginData[4, 2]))
 
             magOriginData[:] = np.hstack(OriginData)[:]
             # 计算200个点的平均值和标准差
