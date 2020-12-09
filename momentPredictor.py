@@ -83,7 +83,7 @@ class MagPredictor():
         xes = self.ukf.x
         p = self.ukf.P
         nees = np.dot((xtruth - xes).T, linalg.inv(p)).dot(xtruth - xes)
-        print('mean NEES is: ', nees)
+        # print('mean NEES is: ', nees)
 
 
 def plotError(mp, slavePlot=4):
