@@ -16,39 +16,45 @@ from dataViewer import magViewer
 from trajectoryView import track3D
 
 
-
 class MagPredictor():
-    stateNum = 7  # x, y, z, q0, q1, q2, q3
-   
+    stateNum = 10  # x, y, z, q0, q1, q2, q3, wx, wy, wz
+
     def __init__(self):
-        self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3-self.stateNum)
+        self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3 - self.stateNum)
         self.dt = 0.03  # 时间间隔[s]
-        self.ukf = UKF(dim_x=self.stateNum, dim_z=SLAVES*3, dt=self.dt, points=self.points, fx=self.f, hx=h)
-        self.ukf.x = np.array([0.0, 0.0, 0.1, 1, 0, 0, 0])  # 初始值
-        self.ukf.R = np.ones((SLAVES * 3, SLAVES * 3)) * 5    # 先初始化为5，后面自适应赋值
+        self.ukf = UKF(dim_x=self.stateNum, dim_z=SLAVES * 3, dt=self.dt, points=self.points, fx=self.f, hx=h)
+        self.ukf.x = np.array([0.0, 0.0, 0.04, 1, 0, 0, 0, 0.001, 0, 0])  # 初始值
+        self.ukf.R = np.ones((SLAVES * 3, SLAVES * 3)) * 5  # 先初始化为5，后面自适应赋值
 
         self.ukf.P = np.eye(self.stateNum) * 0.01
 
-        self.ukf.Q = np.eye(self.stateNum) * 0.001 * self.dt     # 将速度作为过程噪声来源，Qi = [v*dt]
-
+        self.ukf.Q = np.eye(self.stateNum) * 0.001 * self.dt  # 将速度作为过程噪声来源，Qi = [v*dt]
         for i in range(3, 7):
-            self.ukf.Q[i, i] = 0.001
+            self.ukf.Q[i, i] = 0.001  # 四元数的过程误差
+        for i in range(7, self.stateNum):
+            self.ukf.Q[i, i] = 0.2  # 角速度的过程误差
 
     def f(self, x, dt):
+        wx, wy, wz = self.ukf.x[-3:]
         A = np.eye(self.stateNum)
+        A[3:7, 3:7] = np.eye(4) + 0.5 * dt * np.array([[0, -wx, -wy, -wz],
+                                                       [wx, 0, wz, -wy],
+                                                       [wy, -wz, 0, wx],
+                                                       [wz, wy, -wx, 0]])
         return np.hstack(np.dot(A, x.reshape(self.stateNum, 1)))
 
     def run(self, magData, state):
         pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
         m = q2m(self.ukf.x[3], self.ukf.x[4], self.ukf.x[5], self.ukf.x[6])
-        # print(r'pos={}m, vel={}m/s, e_moment={}'.format(pos, vel, m))
+        print(r'pos={}m, e_moment={}'.format(pos, m))
 
         z = np.hstack(magData[:])
         # 自适应 R
         for i in range(SLAVES * 3):
             # sensor的方差随B的关系式为：Bvar =  2*E(-16*B^4) - 2*E(-27*B^3) + 2*E(-8*B^2) + 1*E(-18*B) + 10
             Bm = magData[i] + magBgDataShare[i]
-            self.ukf.R[i, i] = 2 * math.exp(-16) * Bm ** 4 - 2 * math.exp(-27) * Bm ** 3 + 2 * math.exp(-8) * Bm * Bm + math.exp(-18) * Bm + 10
+            self.ukf.R[i, i] = 2 * math.exp(-16) * Bm ** 4 - 2 * math.exp(-27) * Bm ** 3 + 2 * math.exp(
+                -8) * Bm * Bm + math.exp(-18) * Bm + 10
 
         t0 = datetime.datetime.now()
         self.ukf.predict()
@@ -114,7 +120,7 @@ if __name__ == '__main__':
     magBgDataShare = multiprocessing.Array('f', range(27))
     magSmoothData = multiprocessing.Array('f', range(27))
     magPredictData = multiprocessing.Array('f', range(27))
-    state = multiprocessing.Array('f', range(9))  #x, y, z, q0, q1, q2, q3, moment, timeCost
+    state = multiprocessing.Array('f', range(12))  # x, y, z, q0, q1, q2, q3, wx, wy, wz, moment, timeCost
 
     # 读取sensor数据
     pRead = multiprocessing.Process(target=readSerial, args=(magOriginDataShare, magSmoothData))
