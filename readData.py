@@ -23,7 +23,8 @@ def readSerial(magOriginData, magSmoothData, slavePlot=0):
     port = list(serial.tools.list_ports.comports())[-1][0]
     ser = serial.Serial(port, 9600, timeout=0.5, parity=serial.PARITY_NONE, rtscts=1)
     slaves = 9
-    B200 = np.zeros((slaves, 3, 200))
+    nmax = 1000  # 为计算标准差采集数据个数
+    Bnmax = np.zeros((slaves, 3, nmax))
     OriginData = np.zeros((slaves, 3), dtype=np.float)
     magBgData = np.zeros((slaves, 3), dtype=np.float)
     magOffsetData = np.zeros((slaves, 3), dtype=np.float)
@@ -46,13 +47,13 @@ def readSerial(magOriginData, magSmoothData, slavePlot=0):
 
     while True:
         if ser.in_waiting:
-            nn = n % 200
+            nn = n % nmax
             for slave in range(slaves):
                 [Bx_L, Bx_H, By_L, By_H, Bz_L, Bz_H, id] = ser.read(7)
 
-                B200[id - 1, 0, nn] = OriginData[id - 1, 0] = -1.5 * complement2origin((Bx_H << 8) + Bx_L)
-                B200[id - 1, 1, nn] = OriginData[id - 1, 1] = 1.5 * complement2origin((By_H << 8) + By_L)
-                B200[id - 1, 2, nn] = OriginData[id - 1, 2] = 1.5 * complement2origin((Bz_H << 8) + Bz_L)
+                Bnmax[id - 1, 0, nn] = OriginData[id - 1, 0] = -1.5 * complement2origin((Bx_H << 8) + Bx_L)
+                Bnmax[id - 1, 1, nn] = OriginData[id - 1, 1] = 1.5 * complement2origin((By_H << 8) + By_L)
+                Bnmax[id - 1, 2, nn] = OriginData[id - 1, 2] = 1.5 * complement2origin((Bz_H << 8) + Bz_L)
 
             # 消除背景磁场
             if (not offsetOk) and n < 300:
@@ -74,11 +75,11 @@ def readSerial(magOriginData, magSmoothData, slavePlot=0):
                 OriginData -= magBgData
 
             magOriginData[:] = np.hstack(OriginData)[:]
-            # 计算200个点的平均值和标准差
+            # 计算nmax个点的平均值和标准差
             if nn == 0:
-                # print('Bx平均值为{:.2f}, Bx方差为{:.2f}, By平均值为{:.2f}, By方差为{:.2f}, Bz平均值为{:.2f}, Bz方差为{:.2f}'.
-                #       format(np.mean(B200[slavePlot, 0]), np.var(B200[slavePlot, 0]), np.mean(B200[slavePlot, 1]), np.var(B200[slavePlot, 1]), np.mean(B200[slavePlot, 2]), np.var(B200[slavePlot, 2])))
-                B200 = np.zeros((slaves, 3, 200))
+                print('Bx平均值为{:.2f}, Bx方差为{:.2f}, By平均值为{:.2f}, By方差为{:.2f}, Bz平均值为{:.2f}, Bz方差为{:.2f}'.
+                      format(np.mean(Bnmax[slavePlot, 0]), np.var(Bnmax[slavePlot, 0]), np.mean(Bnmax[slavePlot, 1]), np.var(Bnmax[slavePlot, 1]), np.mean(Bnmax[slavePlot, 2]), np.var(Bnmax[slavePlot, 2])))
+                Bnmax = np.zeros((slaves, 3, nmax))
 
             # 使用FixedLagSmoother对原始数据进行平滑
             fls.smooth(magOriginData[:])
@@ -223,7 +224,7 @@ if __name__ == "__main__":
     magOriginData = multiprocessing.Array('f', range(27))
     magSmoothData = multiprocessing.Array('f', range(27))
 
-    processRead = multiprocessing.Process(target=readSerial, args=(magOriginData, magSmoothData, slavePlot))
+    processRead = multiprocessing.Process(target=readSerial, args=(magOriginData, magSmoothData))
     processRead.daemon = True
     processRead.start()
 
