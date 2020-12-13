@@ -25,7 +25,7 @@ def readSerial(magOriginData, magSmoothData, slavePlot=0):
     OriginData = np.zeros((slaves, 3), dtype=np.float)
     magBgData = np.zeros((slaves, 3), dtype=np.float)
     magOffsetData = np.zeros((slaves, 3), dtype=np.float)
-    offsetOk = False
+    offsetOk = True
     n = 0
 
     fls = FLS(dim_x=SLAVES*3, dim_z=SLAVES*3, N=10)
