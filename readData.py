@@ -1,4 +1,5 @@
 import json
+import math
 import numpy as np
 import serial
 import serial.tools.list_ports
@@ -10,12 +11,13 @@ from filterpy.kalman import FixedLagSmoother as FLS
 import pyqtgraph as pg
 
 SLAVES = 9
-MOMENT = 0.3   # 胶囊的磁矩[A*m^2]
+MOMENT = 0.3  # 胶囊的磁矩[A*m^2]
 DISTANCE = 0.12  # sensor之间的距离[m]
-SENSORLOC = np.array(   # sensor的分布
+SENSORLOC = np.array(  # sensor的分布
     [[-DISTANCE, DISTANCE, 0], [0, DISTANCE, 0], [DISTANCE, DISTANCE, 0],
      [-DISTANCE, 0, 0], [0, 0, 0], [DISTANCE, 0, 0],
      [-DISTANCE, -DISTANCE, 0], [0, -DISTANCE, 0], [DISTANCE, -DISTANCE, 0]])
+
 
 def readSerial(magOriginData, magSmoothData, slavePlot=0):
     port = list(serial.tools.list_ports.comports())[-1][0]
@@ -28,7 +30,7 @@ def readSerial(magOriginData, magSmoothData, slavePlot=0):
     offsetOk = False
     n = 0
 
-    fls = FLS(dim_x=SLAVES*3, dim_z=SLAVES*3, N=10)
+    fls = FLS(dim_x=SLAVES * 3, dim_z=SLAVES * 3, N=10)
     fls.P *= 200
     fls.R *= 50
     fls.Q *= 0.5
@@ -84,6 +86,7 @@ def readSerial(magOriginData, magSmoothData, slavePlot=0):
             magSmoothData[:] = np.array(fls.xSmooth[-1])[0, :]
             n += 1
 
+
 def plotMag(magOriginData, magSmoothData, slavePlot=(1, 5, 9)):
     app = pg.Qt.QtGui.QApplication([])
     win = pg.GraphicsLayoutWidget(show=True, title="Mag3D Viewer")
@@ -132,7 +135,8 @@ def plotMag(magOriginData, magSmoothData, slavePlot=(1, 5, 9)):
     if (sys.flags.interactive != 1) or not hasattr(pg.Qt.QtCore, 'PYQT_VERSION'):
         pg.Qt.QtGui.QApplication.instance().exec_()
 
-def plotB(magOriginData , slavePlot=(1, 5, 9), state=None):
+
+def plotB(magOriginData, slavePlot=(1, 5, 9), state=None):
     app = pg.Qt.QtGui.QApplication([])
     win = pg.GraphicsLayoutWidget(show=True, title="Mag3D Viewer")
     win.resize(1500, 900)
@@ -140,8 +144,8 @@ def plotB(magOriginData , slavePlot=(1, 5, 9), state=None):
     pg.setConfigOptions(antialias=True)
 
     n = Queue()
-    curves = []  
-    datas = []   # [s1_Bx_Origin, s1_Bx_Predict, s1_By_Origin, s1_By_Predict, ... ]
+    curves = []
+    datas = []  # [s1_Bx_Origin, s1_Bx_Predict, s1_By_Origin, s1_By_Predict, ... ]
     for i in slavePlot:
         for Bi in ['Bx', 'By', 'Bz']:
             p = win.addPlot(title='slave {}--'.format(i) + Bi)
@@ -152,8 +156,8 @@ def plotB(magOriginData , slavePlot=(1, 5, 9), state=None):
             cPredict = p.plot(pen='g', name='Predict')
             curves.append(cOrigin)
             curves.append(cPredict)
-            datas.append(Queue())    # origin
-            datas.append(Queue())    # Predict
+            datas.append(Queue())  # origin
+            datas.append(Queue())  # Predict
         win.nextRow()
     i = 0
 
@@ -164,8 +168,8 @@ def plotB(magOriginData , slavePlot=(1, 5, 9), state=None):
         n.put(i)
         for slaveIndex, slave in enumerate(slavePlot):
             for Bindex in range(3):
-                datas[slaveIndex * 6 + Bindex * 2].put(magOriginData[(slave-1) * 3 + Bindex])
-                datas[slaveIndex * 6 + Bindex * 2 + 1].put(magPredictData[(slave-1) * 3 + Bindex])
+                datas[slaveIndex * 6 + Bindex * 2].put(magOriginData[(slave - 1) * 3 + Bindex])
+                datas[slaveIndex * 6 + Bindex * 2 + 1].put(magPredictData[(slave - 1) * 3 + Bindex])
 
         if i > 100:
             n.get()
@@ -181,11 +185,13 @@ def plotB(magOriginData , slavePlot=(1, 5, 9), state=None):
     if (sys.flags.interactive != 1) or not hasattr(pg.Qt.QtCore, 'PYQT_VERSION'):
         pg.Qt.QtGui.QApplication.instance().exec_()
 
+
 def complement2origin(x):
     if (x & 0x8000) == 0x8000:
         return -((x - 1) ^ 0xffff)
     else:
         return x
+
 
 def q2m(q0, q1, q2, q3):
     qq2 = (q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3)
@@ -194,10 +200,10 @@ def q2m(q0, q1, q2, q3):
     mz = (q0 * q0 - q1 * q1 - q2 * q2 + q3 * q3) / qq2
     return [round(mx, 2), round(my, 2), round(mz, 2)]
 
+
 def h(state):
     B = np.zeros((9, 3))
-    x, y, z = state[0:3]
-    q0, q1, q2, q3 = state[3:7]
+    x, y, z, q0, q1, q2, q3 = state[0: 7]
     mNorm = np.array([q2m(q0, q1, q2, q3)])
     rotNorm = np.array([q2m(q0, q1, q2, q3)] * 9)
 
@@ -205,9 +211,11 @@ def h(state):
     r = np.linalg.norm(pos, axis=1, keepdims=True)
     posNorm = pos / r
 
-    B = MOMENT * np.multiply(r ** (-3), np.subtract(3 * np.multiply(np.inner(posNorm, mNorm), posNorm), rotNorm)) # 每个sensor的B值[mGs]
+    B = MOMENT * np.multiply(r ** (-3), np.subtract(3 * np.multiply(np.inner(posNorm, mNorm), posNorm),
+                                                    rotNorm))  # 每个sensor的B值[mGs]
     data = B.reshape(-1)
     return data
+
 
 if __name__ == "__main__":
     # multiprocessing.set_start_method('spawn')

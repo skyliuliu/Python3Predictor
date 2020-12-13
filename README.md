@@ -21,7 +21,7 @@ y , z）和姿态（四元数q0, q1, q2, q3）
 + 磁偶极矩的公式定义
 + 配置参数的定义，包括：sensor个数、磁矩大小、sensor之间的距离等
 ##### 4.2 magPredictor.py
-　　实现预测功能的主文件，调用UKF库和其它文件
+　　实现预测胶囊功能的主文件，调用UKF库和其它文件
 ##### 4.3 dataViewer.py
 　　3D显示磁矩的位置和姿态
 ##### 4.4 momentPredictor.py
@@ -34,6 +34,8 @@ y , z）和姿态（四元数q0, q1, q2, q3）
 　　保存的背景磁场
 ##### 4.8 requirements.txt
 　　依赖的第三方库名称
+##### 4.9 EPMPredictor.py
+　　专用于预测外部磁体
 
 ## 5. 使用步骤
 （1）在readData.py配置好相应的参数<br>
