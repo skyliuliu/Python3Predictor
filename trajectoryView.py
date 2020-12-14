@@ -109,21 +109,23 @@ class Custom3DAxis(gl.GLAxisItem):
 def track3D(state):
     app = QtGui.QApplication([])
     w = gl.GLViewWidget()
-    w.resize(800, 600)
+    w.resize(800, 800)
     # add xy grid
     gx = gl.GLGridItem()
+    gx.setSize(x=120, y=120, z=10)
+    gx.setSpacing(x=10, y=10)
     w.addItem(gx)
     # instance of Custom3DAxis
     axis = Custom3DAxis(w, color=(0.6, 0.6, 0.2, .6))
-    axis.setSize(x=20, y=20, z=20)
+    axis.setSize(x=60, y=60, z=80)
     # Add axes labels
     axis.add_labels()
     # Add axes tick values
-    axis.add_tick_values(xticks=[5, 10, 15, 20], yticks=[5, 10, 15, 20], zticks=[0, 5, 10, 15, 20])
+    axis.add_tick_values(xticks=[15, 30, 45, 60], yticks=[15, 30, 45, 60], zticks=[0, 20, 40, 60, 80])
     w.addItem(axis)
-    w.opts['distance'] = 40
+    w.opts['distance'] = 160
 
-    pos = np.array([[0, 10, 4], [0, -10, 4]])
+    pos = np.array([[0, 10, 60], [0, -10, 60]])
     plt0 = gl.GLLinePlotItem(pos=pos, width=1.5)
     w.addItem(plt0)
     plt = gl.GLLinePlotItem(pos=pos, width=2, color=(1, 0, 0, .6))

@@ -31,9 +31,9 @@ class MagPredictor():
         self.ukf = UKF(dim_x=self.stateNum, dim_z=SLAVES * 3, dt=self.dt, points=self.points, fx=self.f, hx=self.h)
         self.ukf.x = np.array([0, 0, 0.6, 0, 1, 0, 0, 1600])  # 初始值
         self.x0 = np.array([0, 0, 0.0415, 1, 0, 0, 0, 0.29])  # 初始值
-        self.ukf.R = np.ones((SLAVES * 3, SLAVES * 3)) * 5  # 先初始化为5，后面自适应赋值
+        self.ukf.R *= 5  # 先初始化为5，后面自适应赋值
 
-        self.ukf.P = np.eye(self.stateNum) * 0.5
+        self.ukf.P = np.eye(self.stateNum) * 0.2
         for i in range(3, 7):
             self.ukf.P[i, i] = 0.001
         self.ukf.P[-1, -1] = 10
@@ -41,7 +41,7 @@ class MagPredictor():
         self.ukf.Q = np.eye(self.stateNum) * 0.001 * self.dt  # 将速度作为过程噪声来源，Qi = [v*dt]
         for i in range(3, 7):
             self.ukf.Q[i, i] = 0.001
-        self.ukf.Q[7, 7] = 1
+        self.ukf.Q[7, 7] = 10
 
     def f(self, x, dt):
         A = np.eye(self.stateNum)
@@ -73,7 +73,7 @@ class MagPredictor():
             # sensor的方差随B的关系式为：Bvar =  2*E(-16*B^4) - 2*E(-27*B^3) + 2*E(-8*B^2) + 1*E(-18*B) + 10
             Bm = magData[i] + magBgDataShare[i]
             self.ukf.R[i, i] = (2 * math.exp(-16) * Bm ** 4 - 2 * math.exp(-27) * Bm ** 3 + 2 * math.exp(
-                -8) * Bm * Bm + math.exp(-18) * Bm + 10) * 1
+                -8) * Bm * Bm + math.exp(-18) * Bm + 10) * 0.01
 
         z = np.hstack(magData[:])
 
