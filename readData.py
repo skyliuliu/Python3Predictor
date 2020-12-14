@@ -9,6 +9,9 @@ from queue import Queue
 import multiprocessing
 from filterpy.kalman import FixedLagSmoother as FLS
 import pyqtgraph as pg
+import matplotlib.pyplot as plt
+from scipy import stats
+
 
 SLAVES = 9
 MOMENT = 0.3  # 胶囊的磁矩[A*m^2]
@@ -19,22 +22,24 @@ SENSORLOC = np.array(  # sensor的分布
      [-DISTANCE, -DISTANCE, 0], [0, -DISTANCE, 0], [DISTANCE, -DISTANCE, 0]])
 
 
-def readSerial(magOriginData, magSmoothData, slavePlot=0):
+def readSerial(magOriginData, magSmoothData, slavePlot=4):
     port = list(serial.tools.list_ports.comports())[-1][0]
     ser = serial.Serial(port, 9600, timeout=0.5, parity=serial.PARITY_NONE, rtscts=1)
     slaves = 9
-    nmax = 1000  # 为计算标准差采集数据个数
+    nmax = 200  # 为计算标准差采集数据个数
     Bnmax = np.zeros((slaves, 3, nmax))
     OriginData = np.zeros((slaves, 3), dtype=np.float)
     magBgData = np.zeros((slaves, 3), dtype=np.float)
     magOffsetData = np.zeros((slaves, 3), dtype=np.float)
     offsetOk = True
     n = 0
-
-    fls = FLS(dim_x=SLAVES * 3, dim_z=SLAVES * 3, N=10)
+    # 固定区间平滑器
+    fls = FLS(dim_x=SLAVES * 3, dim_z=SLAVES * 3, N=20)
     fls.P *= 200
     fls.R *= 50
     fls.Q *= 0.5
+    # 引入闭包来评估数据是否满足正态分布
+    ftestNormal = testNormal
 
     if offsetOk:
         f = open('bg.json', 'r')
@@ -51,9 +56,12 @@ def readSerial(magOriginData, magSmoothData, slavePlot=0):
             for slave in range(slaves):
                 [Bx_L, Bx_H, By_L, By_H, Bz_L, Bz_H, id] = ser.read(7)
 
-                Bnmax[id - 1, 0, nn] = OriginData[id - 1, 0] = -1.5 * complement2origin((Bx_H << 8) + Bx_L)
-                Bnmax[id - 1, 1, nn] = OriginData[id - 1, 1] = 1.5 * complement2origin((By_H << 8) + By_L)
-                Bnmax[id - 1, 2, nn] = OriginData[id - 1, 2] = 1.5 * complement2origin((Bz_H << 8) + Bz_L)
+                # Bnmax[id - 1, 0, nn] = OriginData[id - 1, 0] = -1.5 * complement2origin((Bx_H << 8) + Bx_L)
+                # Bnmax[id - 1, 1, nn] = OriginData[id - 1, 1] = 1.5 * complement2origin((By_H << 8) + By_L)
+                # Bnmax[id - 1, 2, nn] = OriginData[id - 1, 2] = 1.5 * complement2origin((Bz_H << 8) + Bz_L)
+                OriginData[id - 1, 0] = -1.5 * complement2origin((Bx_H << 8) + Bx_L)
+                OriginData[id - 1, 1] = 1.5 * complement2origin((By_H << 8) + By_L)
+                OriginData[id - 1, 2] = 1.5 * complement2origin((Bz_H << 8) + Bz_L)
 
             # 消除背景磁场
             if (not offsetOk) and n < 300:
@@ -75,16 +83,18 @@ def readSerial(magOriginData, magSmoothData, slavePlot=0):
                 OriginData -= magBgData
 
             magOriginData[:] = np.hstack(OriginData)[:]
-            # 计算nmax个点的平均值和标准差
-            if nn == 0:
-                print('Bx平均值为{:.2f}, Bx方差为{:.2f}, By平均值为{:.2f}, By方差为{:.2f}, Bz平均值为{:.2f}, Bz方差为{:.2f}'.
-                      format(np.mean(Bnmax[slavePlot, 0]), np.var(Bnmax[slavePlot, 0]), np.mean(Bnmax[slavePlot, 1]), np.var(Bnmax[slavePlot, 1]), np.mean(Bnmax[slavePlot, 2]), np.var(Bnmax[slavePlot, 2])))
-                Bnmax = np.zeros((slaves, 3, nmax))
 
             # 使用FixedLagSmoother对原始数据进行平滑
             fls.smooth(magOriginData[:])
             tmp = np.array(fls.xSmooth[0])
             magSmoothData[:] = np.array(fls.xSmooth[-1])[0, :]
+
+            # 计算nmax个点的平均值和标准差
+            # Bnmax[slavePlot, 2, nn] = magSmoothData[14]
+            # if nn == 0 and n > 0:
+            #     ftestNormal(Bnmax[slavePlot, 2])
+            #     Bnmax = np.zeros((slaves, 3, nmax))
+
             n += 1
 
 
@@ -186,6 +196,12 @@ def plotB(magOriginData, slavePlot=(1, 5, 9), state=None):
     if (sys.flags.interactive != 1) or not hasattr(pg.Qt.QtCore, 'PYQT_VERSION'):
         pg.Qt.QtGui.QApplication.instance().exec_()
 
+def testNormal(data):
+    mean, std = np.mean(data), np.std(data)
+    r = stats.kstest(data, 'norm', args=(mean, std))
+    print('r={}, mean={}, var={}'.format(r, mean, std * std))
+    # plt.hist(data, bins=100, histtype='bar', rwidth=0.8)
+    # plt.show()
 
 def complement2origin(x):
     if (x & 0x8000) == 0x8000:
@@ -231,4 +247,4 @@ if __name__ == "__main__":
     time.sleep(0.5)
     while True:
         plotMag(magOriginData, magSmoothData)
-    # plotB(magOriginData, slavePlot=slavePlot)
+        # plotB(magOriginData, slavePlot=slavePlot)

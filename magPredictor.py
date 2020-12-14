@@ -24,10 +24,10 @@ class MagPredictor():
         self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3-self.stateNum)
         self.dt = 0.03  # 时间间隔[s]
         self.ukf = UKF(dim_x=self.stateNum, dim_z=SLAVES*3, dt=self.dt, points=self.points, fx=self.f, hx=h)
-        self.ukf.x = np.array([0.0, 0.0, 0.1, 1, 0, 0, 0])  # 初始值
-        self.ukf.R = np.ones((SLAVES * 3, SLAVES * 3)) * 5    # 先初始化为5，后面自适应赋值
+        self.ukf.x = np.array([0.0, 0.0, 0.04, 1, 0, 0, 0])  # 初始值
+        self.ukf.R *= 3    # 先初始化为3，后面自适应赋值
 
-        self.ukf.P = np.eye(self.stateNum) * 0.01
+        self.ukf.P = np.eye(self.stateNum) * 0.016
 
         self.ukf.Q = np.eye(self.stateNum) * 0.001 * self.dt     # 将速度作为过程噪声来源，Qi = [v*dt]
 
@@ -45,10 +45,10 @@ class MagPredictor():
 
         z = np.hstack(magData[:])
         # 自适应 R
-        for i in range(SLAVES * 3):
-            # sensor的方差随B的关系式为：Bvar =  2*E(-16*B^4) - 2*E(-27*B^3) + 2*E(-8*B^2) + 1*E(-18*B) + 10
-            Bm = magData[i] + magBgDataShare[i]
-            self.ukf.R[i, i] = 2 * math.exp(-16) * Bm ** 4 - 2 * math.exp(-27) * Bm ** 3 + 2 * math.exp(-8) * Bm * Bm + math.exp(-18) * Bm + 10
+        # for i in range(SLAVES * 3):
+        #     # sensor的方差随B的关系式为：Bvar =  2*E(-16*B^4) - 2*E(-27*B^3) + 2*E(-8*B^2) + 1*E(-18*B) + 10
+        #     Bm = magData[i] + magBgDataShare[i]
+        #     self.ukf.R[i, i] = 2 * math.exp(-16) * Bm ** 4 - 2 * math.exp(-27) * Bm ** 3 + 2 * math.exp(-8) * Bm * Bm + math.exp(-18) * Bm + 10
 
         t0 = datetime.datetime.now()
         self.ukf.predict()
@@ -127,9 +127,9 @@ if __name__ == '__main__':
     mp = MagPredictor()
 
     # 启动mag3D视图
-    # pMagViewer = multiprocessing.Process(target=magViewer, args=(state,))
-    # pMagViewer.daemon = True
-    # pMagViewer.start()
+    pMagViewer = multiprocessing.Process(target=magViewer, args=(state,))
+    pMagViewer.daemon = True
+    pMagViewer.start()
 
     # 实时显示sensor的值
     # plotBwindow = multiprocessing.Process(target=plotB, args=(magOriginDataShare, (1, 5, 9), state))
@@ -141,9 +141,9 @@ if __name__ == '__main__':
     # threadplotError.start()
 
     # 显示3D轨迹
-    trajectory = multiprocessing.Process(target=track3D, args=(state,))
-    trajectory.daemon = True
-    trajectory.start()
+    # trajectory = multiprocessing.Process(target=track3D, args=(state,))
+    # trajectory.daemon = True
+    # trajectory.start()
 
     while True:
         mp.run(magSmoothData, state)
