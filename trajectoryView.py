@@ -49,21 +49,22 @@ class Custom3DAxis(gl.GLAxisItem):
         """Adds axes labels."""
         x, y, z = self.size()
         # X label
-        self.xLabel = CustomTextItem(X=x + 1, Y=-y / 20, Z=-z / 20, text="X(cm)")
+        self.xLabel = CustomTextItem(X=x + 1, Y=-y / 10, Z=-z / 10, text="X(cm)")
         self.xLabel.setGLViewWidget(self.parent)
         self.parent.addItem(self.xLabel)
         # Y label
-        self.yLabel = CustomTextItem(X=-x / 20, Y=y + 1, Z=-z / 20, text="Y(cm)")
+        self.yLabel = CustomTextItem(X=-x / 10, Y=y + 1, Z=-z / 10, text="Y(cm)")
         self.yLabel.setGLViewWidget(self.parent)
         self.parent.addItem(self.yLabel)
         # Z label
-        self.zLabel = CustomTextItem(X=-x / 20, Y=-y / 20, Z=z + 1, text="Z(cm)")
+        self.zLabel = CustomTextItem(X=-x / 10, Y=-y / 10, Z=z + 1, text="Z(cm)")
         self.zLabel.setGLViewWidget(self.parent)
         self.parent.addItem(self.zLabel)
 
     def add_tick_values(self, xticks=[], yticks=[], zticks=[]):
         """Adds ticks values."""
         x, y, z = self.size()
+        print(x,y,z)
         xtpos = np.linspace(0, x, len(xticks))
         ytpos = np.linspace(0, y, len(yticks))
         ztpos = np.linspace(0, z, len(zticks))
@@ -109,24 +110,24 @@ class Custom3DAxis(gl.GLAxisItem):
 def track3D(state):
     app = QtGui.QApplication([])
     w = gl.GLViewWidget()
-    w.resize(800, 800)
+    w.resize(1000, 1000)
     # add xy grid
     gx = gl.GLGridItem()
-    gx.setSize(x=120, y=120, z=10)
+    gx.setSize(x=100, y=100, z=10)
     gx.setSpacing(x=10, y=10)
     w.addItem(gx)
     # instance of Custom3DAxis
     axis = Custom3DAxis(w, color=(0.6, 0.6, 0.2, .6))
-    axis.setSize(x=60, y=60, z=80)
+    axis.setSize(x=40, y=40, z=80)
     # Add axes labels
     axis.add_labels()
     # Add axes tick values
-    axis.add_tick_values(xticks=[15, 30, 45, 60], yticks=[15, 30, 45, 60], zticks=[0, 20, 40, 60, 80])
+    axis.add_tick_values(xticks=[0, 10, 20, 30, 40], yticks=[0, 10, 20, 30, 40], zticks=[0, 20, 40, 60, 80])
     w.addItem(axis)
-    w.opts['distance'] = 160
+    w.opts['distance'] = 100
 
-    pos = np.array([[0, 10, 60], [0, -10, 60]])
-    plt0 = gl.GLLinePlotItem(pos=pos, width=1.5)
+    pos = np.array([[0, 10, 55], [0, -10, 55]])
+    plt0 = gl.GLLinePlotItem(pos=pos, width=1)
     w.addItem(plt0)
     plt = gl.GLLinePlotItem(pos=pos, width=2, color=(1, 0, 0, .6))
     w.addItem(plt)

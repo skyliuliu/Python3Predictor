@@ -267,7 +267,7 @@ def magViewer(state):
                 posTemp[j].get()
         index += 1
         stdPos = [np.std(q.queue) for q in posTemp]
-        stateAll = np.append(state, stdPos)
+        stateAll = np.append(state[:7] + state[-2:], stdPos)
         magViewer.onRender(stateAll)
 
     t = QtCore.QTimer()

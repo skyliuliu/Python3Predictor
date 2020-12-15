@@ -24,7 +24,7 @@ class MagPredictor():
         self.dt = 0.03  # 时间间隔[s]
         self.ukf = UKF(dim_x=self.stateNum, dim_z=SLAVES * 3, dt=self.dt, points=self.points, fx=self.f, hx=h)
         self.ukf.x = np.array([0.0, 0.0, 0.6, 0, 1, 0, 0, 0.001, 0, 0])  # 初始值
-        self.ukf.R *= 5
+        self.ukf.R *= 2
 
         self.ukf.P = np.eye(self.stateNum) * 0.2
         for i in range(3, 7):
@@ -36,7 +36,7 @@ class MagPredictor():
         for i in range(3, 7):
             self.ukf.Q[i, i] = 0.001  # 四元数的过程误差
         for i in range(7, self.stateNum):
-            self.ukf.Q[i, i] = 0.02  # 角速度的过程误差
+            self.ukf.Q[i, i] = 0.001  # 角速度的过程误差
 
     def f(self, x, dt):
         wx, wy, wz = self.ukf.x[-3:]
@@ -50,7 +50,7 @@ class MagPredictor():
     def run(self, magData, state):
         pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
         m = q2m(self.ukf.x[3], self.ukf.x[4], self.ukf.x[5], self.ukf.x[6])
-        print(r'pos={}m, e_moment={}'.format(pos, m))
+        # print(r'pos={}m, e_moment={}'.format(pos, m))
 
         z = np.hstack(magData[:])
         # 自适应 R
@@ -58,9 +58,11 @@ class MagPredictor():
             # 1.sensor的方差随B的关系式为：Bvar =  2*E(-16)*B^4 - 2*E(-27)*B^3 + 2*E(-8)*B^2 + 1*E(-18)*B + 10
             # Bm = magData[i] + magBgDataShare[i]
             # self.ukf.R[i, i] = (2 * math.exp(-16) * Bm ** 4 - 2 * math.exp(-27) * Bm ** 3 + 2 * math.exp(-8) * Bm * Bm + math.exp(-18) * Bm + 10) * 0.005
+
             # 2.均值平滑，sensor的方差随B的关系式为：Bvar =  1*E(-8)*B^2 - 2*E(-6)*B + 0.84
             Bm = magData[i] + magBgDataShare[i]
             self.ukf.R[i, i] = 1 * math.exp(-8) * Bm ** 2 - 2 * math.exp(-6) * Bm + 0.84
+
             # 3.均值平滑，sensor的方差随B的关系式为：Bvar =  1*E(-8)*B^2 + 6*E(-6)*B + 3.221
             # Bm = magData[i] + magBgDataShare[i]
             # self.ukf.R[i, i] = 1 * math.exp(-8) * Bm ** 2 + 6 * math.exp(-6) * Bm + 3.221
@@ -147,9 +149,9 @@ if __name__ == '__main__':
     # pMagViewer.start()
 
     # 实时显示sensor的值
-    # plotBwindow = multiprocessing.Process(target=plotB, args=(magOriginDataShare, (1, 5, 9), state))
-    # plotBwindow.daemon = True
-    # plotBwindow.start()
+    plotBwindow = multiprocessing.Process(target=plotB, args=(magOriginDataShare, (1, 5, 9), state))
+    plotBwindow.daemon = True
+    plotBwindow.start()
 
     # 显示残差
     # threadplotError = threading.Thread(target=plotError, args=(mp, 0))

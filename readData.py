@@ -11,7 +11,7 @@ import pyqtgraph as pg
 from scipy import stats
 
 SLAVES = 9  # sensor个数
-MOMENT = 0.3  # 胶囊的磁矩[A*m^2]
+MOMENT = 2100  # 胶囊的磁矩[A*m^2]
 DISTANCE = 0.12  # sensor之间的距离[m]
 SENSORLOC = np.array(  # sensor的分布
     [[-DISTANCE, DISTANCE, 0], [0, DISTANCE, 0], [DISTANCE, DISTANCE, 0],
