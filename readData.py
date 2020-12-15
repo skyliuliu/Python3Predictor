@@ -1,5 +1,4 @@
 import json
-import math
 import numpy as np
 import serial
 import serial.tools.list_ports
@@ -9,12 +8,10 @@ from queue import Queue
 import multiprocessing
 from filterpy.kalman import FixedLagSmoother as FLS
 import pyqtgraph as pg
-import matplotlib.pyplot as plt
 from scipy import stats
 
-
-SLAVES = 9
-MOMENT = 2400  # 胶囊的磁矩[A*m^2]
+SLAVES = 9  # sensor个数
+MOMENT = 0.3  # 胶囊的磁矩[A*m^2]
 DISTANCE = 0.12  # sensor之间的距离[m]
 SENSORLOC = np.array(  # sensor的分布
     [[-DISTANCE, DISTANCE, 0], [0, DISTANCE, 0], [DISTANCE, DISTANCE, 0],
@@ -25,12 +22,14 @@ SENSORLOC = np.array(  # sensor的分布
 def readSerial(magOriginData, magSmoothData, slavePlot=4):
     port = list(serial.tools.list_ports.comports())[-1][0]
     ser = serial.Serial(port, 9600, timeout=0.5, parity=serial.PARITY_NONE, rtscts=1)
-    slaves = 9
+    navg = 10  # 均值平滑的数据个数
+    Bnavg = np.zeros((SLAVES, 3))  # 均值平滑储存的数据
     nmax = 200  # 为计算标准差采集数据个数
-    Bnmax = np.zeros((slaves, 3, nmax))
-    OriginData = np.zeros((slaves, 3), dtype=np.float)
-    magBgData = np.zeros((slaves, 3), dtype=np.float)
-    magOffsetData = np.zeros((slaves, 3), dtype=np.float)
+    Bnmax = np.zeros((SLAVES, 3, nmax))  # 计算标准差储存的数据
+
+    OriginData = np.zeros((SLAVES, 3), dtype=np.float)
+    magBgData = np.zeros((SLAVES, 3), dtype=np.float)
+    magOffsetData = np.zeros((SLAVES, 3), dtype=np.float)
     offsetOk = True
     n = 0
     # 固定区间平滑器
@@ -38,7 +37,7 @@ def readSerial(magOriginData, magSmoothData, slavePlot=4):
     fls.P *= 200
     fls.R *= 50
     fls.Q *= 0.5
-    # 引入闭包来评估数据是否满足正态分布
+    # 使用闭包来评估数据是否满足正态分布
     ftestNormal = testNormal
 
     if offsetOk:
@@ -53,17 +52,13 @@ def readSerial(magOriginData, magSmoothData, slavePlot=4):
     while True:
         if ser.in_waiting:
             nn = n % nmax
-            for slave in range(slaves):
+            for slave in range(SLAVES):
                 [Bx_L, Bx_H, By_L, By_H, Bz_L, Bz_H, id] = ser.read(7)
-
-                # Bnmax[id - 1, 0, nn] = OriginData[id - 1, 0] = -1.5 * complement2origin((Bx_H << 8) + Bx_L)
-                # Bnmax[id - 1, 1, nn] = OriginData[id - 1, 1] = 1.5 * complement2origin((By_H << 8) + By_L)
-                # Bnmax[id - 1, 2, nn] = OriginData[id - 1, 2] = 1.5 * complement2origin((Bz_H << 8) + Bz_L)
                 OriginData[id - 1, 0] = -1.5 * complement2origin((Bx_H << 8) + Bx_L)
                 OriginData[id - 1, 1] = 1.5 * complement2origin((By_H << 8) + By_L)
                 OriginData[id - 1, 2] = 1.5 * complement2origin((Bz_H << 8) + Bz_L)
 
-            # 消除背景磁场
+            # 扣除背景磁场
             if (not offsetOk) and n < 300:
                 magOffsetData += OriginData
             elif (not offsetOk) and n == 300:
@@ -89,11 +84,18 @@ def readSerial(magOriginData, magSmoothData, slavePlot=4):
             tmp = np.array(fls.xSmooth[0])
             magSmoothData[:] = np.array(fls.xSmooth[-1])[0, :]
 
+            # 取navg个点的平均值进行平滑
+            # Bnavg += OriginData
+            # if n % navg == 0:
+            #     magSmoothData[:] = np.hstack(Bnavg // navg)[:]
+            #     Bnavg = np.zeros((SLAVES, 3))
+            #     Bnmax[slavePlot, 2, (n // navg) % (nmax // navg)] = magSmoothData[14]
+
             # 计算nmax个点的平均值和标准差
             # Bnmax[slavePlot, 2, nn] = magSmoothData[14]
             # if nn == 0 and n > 0:
             #     ftestNormal(Bnmax[slavePlot, 2])
-            #     Bnmax = np.zeros((slaves, 3, nmax))
+            #     Bnmax = np.zeros((SLAVES, 3, nmax))
 
             n += 1
 
@@ -196,12 +198,14 @@ def plotB(magOriginData, slavePlot=(1, 5, 9), state=None):
     if (sys.flags.interactive != 1) or not hasattr(pg.Qt.QtCore, 'PYQT_VERSION'):
         pg.Qt.QtGui.QApplication.instance().exec_()
 
+
 def testNormal(data):
     mean, std = np.mean(data), np.std(data)
     r = stats.kstest(data, 'norm', args=(mean, std))
     print('r={}, mean={}, var={}'.format(r, mean, std * std))
     # plt.hist(data, bins=100, histtype='bar', rwidth=0.8)
     # plt.show()
+
 
 def complement2origin(x):
     if (x & 0x8000) == 0x8000:

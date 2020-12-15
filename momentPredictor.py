@@ -70,10 +70,15 @@ class MagPredictor():
 
         # 自适应 R
         for i in range(SLAVES * 3):
-            # sensor的方差随B的关系式为：Bvar =  2*E(-16*B^4) - 2*E(-27*B^3) + 2*E(-8*B^2) + 1*E(-18*B) + 10
+            # 1.sensor的方差随B的关系式为：Bvar =  2*E(-16)*B^4 - 2*E(-27)*B^3 + 2*E(-8)*B^2 + 1*E(-18)*B + 10
+            # Bm = magData[i] + magBgDataShare[i]
+            # self.ukf.R[i, i] = (2 * math.exp(-16) * Bm ** 4 - 2 * math.exp(-27) * Bm ** 3 + 2 * math.exp(-8) * Bm * Bm + math.exp(-18) * Bm + 10) * 0.005
+            # 2.均值平滑，sensor的方差随B的关系式为：Bvar =  1*E(-8)*B^2 - 2*E(-6)*B + 0.84
             Bm = magData[i] + magBgDataShare[i]
-            self.ukf.R[i, i] = (2 * math.exp(-16) * Bm ** 4 - 2 * math.exp(-27) * Bm ** 3 + 2 * math.exp(
-                -8) * Bm * Bm + math.exp(-18) * Bm + 10) * 0.01
+            self.ukf.R[i, i] = 1 * math.exp(-8) * Bm ** 2 - 2 * math.exp(-6) * Bm + 0.84
+            # 3.均值平滑，sensor的方差随B的关系式为：Bvar =  1*E(-8)*B^2 + 6*E(-6)*B + 3.221
+            # Bm = magData[i] + magBgDataShare[i]
+            # self.ukf.R[i, i] = 1 * math.exp(-8) * Bm ** 2 + 6 * math.exp(-6) * Bm + 3.221
 
         z = np.hstack(magData[:])
 
