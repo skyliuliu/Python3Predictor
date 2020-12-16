@@ -29,8 +29,10 @@ class MagPredictor():
         self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3 - self.stateNum)
         self.dt = 0.03  # 时间间隔[s]
         self.ukf = UKF(dim_x=self.stateNum, dim_z=SLAVES * 3, dt=self.dt, points=self.points, fx=self.f, hx=self.h)
-        self.ukf.x = np.array([0, 0, 0.6, 0, 1, 0, 0, 2000])  # 初始值
-        self.x0 = np.array([0, 0, 0.0415, 1, 0, 0, 0, 0.29])  # 初始值
+        self.ukf.x = np.array([0, 0, 0.04, 1, 0, 0, 0, 0.3])  # 初始值
+        self.x0 = np.zeros(self.stateNum)  # 初始值
+        self.x0[:] = self.ukf.x
+
         self.ukf.R *= 5  # 先初始化为5，后面自适应赋值
 
         self.ukf.P = np.eye(self.stateNum) * 0.01
@@ -41,7 +43,7 @@ class MagPredictor():
         self.ukf.Q = np.eye(self.stateNum) * 0.0001 * self.dt  # 将速度作为过程噪声来源，Qi = [v*dt]
         for i in range(3, 7):
             self.ukf.Q[i, i] = 0.001
-        self.ukf.Q[7, 7] = 2
+        self.ukf.Q[7, 7] = 0.1
 
     def f(self, x, dt):
         A = np.eye(self.stateNum)
@@ -76,7 +78,7 @@ class MagPredictor():
 
             # 2.均值平滑，sensor的方差随B的关系式为：Bvar =  1*E(-8)*B^2 - 2*E(-6)*B + 0.84
             Bm = magData[i] + magBgDataShare[i]
-            self.ukf.R[i, i] = 1 * math.exp(-8) * Bm ** 2 - 2 * math.exp(-6) * Bm + 0.84
+            self.ukf.R[i, i] = (math.exp(-8) * Bm ** 2 - 2 * math.exp(-6) * Bm + 0.84) * 2
 
             # 3.均值平滑，sensor的方差随B的关系式为：Bvar =  1*E(-8)*B^2 + 6*E(-6)*B + 3.221
             # Bm = magData[i] + magBgDataShare[i]
@@ -95,8 +97,8 @@ class MagPredictor():
         xtruth = self.x0
         xes = self.ukf.x
         p = self.ukf.P
-        nees = np.dot((xtruth - xes).T, linalg.inv(p)).dot(xtruth - xes)
-        # print('mean NEES is: ', nees)
+        self.nees = np.dot((xtruth - xes).T, linalg.inv(p)).dot(xtruth - xes)
+        # print('mean NEES is: ', self.nees)
 
 
 def plotError(mp, slavePlot=4):
@@ -112,9 +114,9 @@ def plotError(mp, slavePlot=4):
     px.setLabel('bottom', 'points', units='1')
     curvex = px.plot(pen='r')
 
-    py = win.addPlot(title="By")
+    py = win.addPlot(title="nees")
     py.addLegend()
-    py.setLabel('left', 'B', units='mG')
+    py.setLabel('left', 'nees', units='1')
     py.setLabel('bottom', 'points', units='1')
     curvey = py.plot(pen='r')
 
@@ -131,7 +133,7 @@ def plotError(mp, slavePlot=4):
         i += 1
         n.put(i)
         Rx.put(mp.ukf.likelihood)
-        Ry.put(mp.ukf.y[slavePlot * 3 + 1])
+        Ry.put(mp.nees)
         Rz.put(mp.ukf.y[slavePlot * 3 + 2])
 
         if i > 100:

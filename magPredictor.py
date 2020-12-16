@@ -1,6 +1,7 @@
 import multiprocessing
 import math
 import time
+import threading
 import datetime
 from queue import Queue
 import sys
@@ -24,15 +25,15 @@ class MagPredictor():
         self.points = MerweScaledSigmaPoints(n=self.stateNum, alpha=0.3, beta=2., kappa=3-self.stateNum)
         self.dt = 0.03  # 时间间隔[s]
         self.ukf = UKF(dim_x=self.stateNum, dim_z=SLAVES*3, dt=self.dt, points=self.points, fx=self.f, hx=h)
-        self.ukf.x = np.array([0.0, 0.0, 0.04, 0, 1, 0, 0])  # 初始值
-        self.ukf.R *= 2    # 先初始化为3，后面自适应赋值
+        self.ukf.x = np.array([0.0, 0.0, 0.04, 1, 0, 0, 0])  # 初始值
+        self.ukf.R *= 3    # 先初始化为3，后面自适应赋值
 
-        self.ukf.P = np.eye(self.stateNum) * 0.2
+        self.ukf.P = np.eye(self.stateNum) * 0.016
 
-        self.ukf.Q = np.eye(self.stateNum) * 0.1 * self.dt     # 将速度作为过程噪声来源，Qi = [v*dt]
+        self.ukf.Q = np.eye(self.stateNum) * 0.01 * self.dt     # 将速度作为过程噪声来源，Qi = [v*dt]
 
         for i in range(3, 7):
-            self.ukf.Q[i, i] = 0.001
+            self.ukf.Q[i, i] = 0.0001
 
     def f(self, x, dt):
         A = np.eye(self.stateNum)
@@ -49,9 +50,11 @@ class MagPredictor():
             # 1.sensor的方差随B的关系式为：Bvar =  2*E(-16)*B^4 - 2*E(-27)*B^3 + 2*E(-8)*B^2 + 1*E(-18)*B + 10
             # Bm = magData[i] + magBgDataShare[i]
             # self.ukf.R[i, i] = (2 * math.exp(-16) * Bm ** 4 - 2 * math.exp(-27) * Bm ** 3 + 2 * math.exp(-8) * Bm * Bm + math.exp(-18) * Bm + 10) * 0.005
+
             # 2.均值平滑，sensor的方差随B的关系式为：Bvar =  1*E(-8)*B^2 - 2*E(-6)*B + 0.84
             Bm = magData[i] + magBgDataShare[i]
-            self.ukf.R[i, i] = 1 * math.exp(-8) * Bm ** 2 - 2 * math.exp(-6) * Bm + 0.84
+            self.ukf.R[i, i] = (math.exp(-8) * Bm ** 2 - 2 * math.exp(-6) * Bm + 0.84) * 1
+
             # 3.均值平滑，sensor的方差随B的关系式为：Bvar =  1*E(-8)*B^2 + 6*E(-6)*B + 3.221
             # Bm = magData[i] + magBgDataShare[i]
             # self.ukf.R[i, i] = 1 * math.exp(-8) * Bm ** 2 + 6 * math.exp(-6) * Bm + 3.221
@@ -71,21 +74,21 @@ def plotError(mp, slavePlot=0):
     win.resize(1500, 500)
     pg.setConfigOptions(antialias=True)
 
-    px = win.addPlot(title="Px")
+    px = win.addPlot(title="y")
     px.addLegend()
-    px.setLabel('left', 'Px', units='m')
+    px.setLabel('left', 'x', units='1')
     px.setLabel('bottom', 'points', units='1')
     curvex = px.plot(pen='r')
 
     py = win.addPlot(title="x")
     py.addLegend()
-    py.setLabel('left', 'x', units='m')
+    py.setLabel('left', 'y', units='1')
     py.setLabel('bottom', 'points', units='1')
     curvey = py.plot(pen='g')
 
-    pz = win.addPlot(title="y")
+    pz = win.addPlot(title="z")
     pz.addLegend()
-    pz.setLabel('left', 'y', units='m')
+    pz.setLabel('left', 'z', units='1')
     pz.setLabel('bottom', 'points', units='1')
     curvez = pz.plot(pen='b')
 
@@ -95,9 +98,9 @@ def plotError(mp, slavePlot=0):
         nonlocal i, slavePlot
         i += 1
         n.put(i)
-        Rx.put(mp.ukf.P[0, 0])
-        Ry.put(mp.ukf.x[0])
-        Rz.put(mp.ukf.x[2])
+        Rx.put(mp.ukf.K[2, 14])
+        Ry.put(mp.ukf.y[13])
+        Rz.put(mp.ukf.y[14])
 
         if i > 500:
             for q in [n, Rx, Ry, Rz]:
@@ -133,9 +136,9 @@ if __name__ == '__main__':
     mp = MagPredictor()
 
     # 启动mag3D视图
-    pMagViewer = multiprocessing.Process(target=magViewer, args=(state,))
-    pMagViewer.daemon = True
-    pMagViewer.start()
+    # pMagViewer = multiprocessing.Process(target=magViewer, args=(state,))
+    # pMagViewer.daemon = True
+    # pMagViewer.start()
 
     # 实时显示sensor的值
     # plotBwindow = multiprocessing.Process(target=plotB, args=(magOriginDataShare, (1, 5, 9), state))
@@ -147,9 +150,9 @@ if __name__ == '__main__':
     # threadplotError.start()
 
     # 显示3D轨迹
-    # trajectory = multiprocessing.Process(target=track3D, args=(state,))
-    # trajectory.daemon = True
-    # trajectory.start()
+    trajectory = multiprocessing.Process(target=track3D, args=(state,))
+    trajectory.daemon = True
+    trajectory.start()
 
     while True:
         mp.run(magSmoothData, state)

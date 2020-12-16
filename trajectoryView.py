@@ -64,18 +64,18 @@ class Custom3DAxis(gl.GLAxisItem):
     def add_tick_values(self, xticks=[], yticks=[], zticks=[]):
         """Adds ticks values."""
         x, y, z = self.size()
-        print(x,y,z)
+        print(x, y, z)
         xtpos = np.linspace(0, x, len(xticks))
         ytpos = np.linspace(0, y, len(yticks))
         ztpos = np.linspace(0, z, len(zticks))
         # X label
         for i, xt in enumerate(xticks):
-            val = CustomTextItem(X=xtpos[i], Y=0, Z=0, text=str(xt))
+            val = CustomTextItem(X=xtpos[i], Y=2, Z=0, text=str(xt))
             val.setGLViewWidget(self.parent)
             self.parent.addItem(val)
         # Y label
         for i, yt in enumerate(yticks):
-            val = CustomTextItem(X=0, Y=ytpos[i], Z=0, text=str(yt))
+            val = CustomTextItem(X=2, Y=ytpos[i], Z=0, text=str(yt))
             val.setGLViewWidget(self.parent)
             self.parent.addItem(val)
         # Z label
@@ -110,12 +110,7 @@ class Custom3DAxis(gl.GLAxisItem):
 def track3D(state):
     app = QtGui.QApplication([])
     w = gl.GLViewWidget()
-    w.resize(1000, 1000)
-    # add xy grid
-    gx = gl.GLGridItem()
-    gx.setSize(x=100, y=100, z=10)
-    gx.setSpacing(x=10, y=10)
-    w.addItem(gx)
+    w.resize(800, 600)
     # instance of Custom3DAxis
     axis = Custom3DAxis(w, color=(0.6, 0.6, 0.2, .6))
     axis.setSize(x=40, y=40, z=80)
@@ -125,6 +120,11 @@ def track3D(state):
     axis.add_tick_values(xticks=[0, 10, 20, 30, 40], yticks=[0, 10, 20, 30, 40], zticks=[0, 20, 40, 60, 80])
     w.addItem(axis)
     w.opts['distance'] = 100
+    # add xy grid
+    gx = gl.GLGridItem()
+    gx.setSize(x=100, y=100, z=10)
+    gx.setSpacing(x=10, y=10)
+    w.addItem(gx)
 
     pos = np.array([[0, 10, 55], [0, -10, 55]])
     plt0 = gl.GLLinePlotItem(pos=pos, width=1)
