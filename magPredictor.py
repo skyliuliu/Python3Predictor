@@ -11,6 +11,7 @@ import pyqtgraph as pg
 from filterpy.kalman import UnscentedKalmanFilter as UKF
 from filterpy.kalman import MerweScaledSigmaPoints
 from filterpy.common import Q_discrete_white_noise
+from scipy import linalg
 
 from readData import readSerial, plotB, h, q2m, SLAVES, MOMENT
 from dataViewer import magViewer
@@ -39,24 +40,24 @@ class MagPredictor():
         A = np.eye(self.stateNum)
         return np.hstack(np.dot(A, x.reshape(self.stateNum, 1)))
 
-    def run(self, magData, state):
+    def run(self, magData, Bg, state):
         pos = (round(self.ukf.x[0], 3), round(self.ukf.x[1], 3), round(self.ukf.x[2], 3))
         m = q2m(self.ukf.x[3], self.ukf.x[4], self.ukf.x[5], self.ukf.x[6])
-        # print(r'pos={}m, vel={}m/s, e_moment={}'.format(pos, vel, m))
+        # print(r'pos={}m, e_moment={}'.format(pos, m))
 
         z = np.hstack(magData[:])
         # 自适应 R
         for i in range(SLAVES * 3):
             # 1.sensor的方差随B的关系式为：Bvar =  2*E(-16)*B^4 - 2*E(-27)*B^3 + 2*E(-8)*B^2 + 1*E(-18)*B + 10
-            # Bm = magData[i] + magBgDataShare[i]
+            # Bm = magData[i] + Bg[i]
             # self.ukf.R[i, i] = (2 * math.exp(-16) * Bm ** 4 - 2 * math.exp(-27) * Bm ** 3 + 2 * math.exp(-8) * Bm * Bm + math.exp(-18) * Bm + 10) * 0.005
 
-            # 2.均值平滑，sensor的方差随B的关系式为：Bvar =  1*E(-8)*B^2 - 2*E(-6)*B + 0.84
-            Bm = magData[i] + magBgDataShare[i]
+            # 2.sensor的方差随B的关系式为：Bvar =  1*E(-8)*B^2 - 2*E(-6)*B + 0.84
+            Bm = magData[i] + Bg[i]
             self.ukf.R[i, i] = (math.exp(-8) * Bm ** 2 - 2 * math.exp(-6) * Bm + 0.84) * 1
 
-            # 3.均值平滑，sensor的方差随B的关系式为：Bvar =  1*E(-8)*B^2 + 6*E(-6)*B + 3.221
-            # Bm = magData[i] + magBgDataShare[i]
+            # 3.sensor的方差随B的关系式为：Bvar =  1*E(-8)*B^2 + 6*E(-6)*B + 3.221
+            # Bm = magData[i] + Bg[i]
             # self.ukf.R[i, i] = 1 * math.exp(-8) * Bm ** 2 + 6 * math.exp(-6) * Bm + 3.221
 
         t0 = datetime.datetime.now()
@@ -65,6 +66,13 @@ class MagPredictor():
         timeCost = (datetime.datetime.now() - t0).total_seconds()
 
         state[:] = np.concatenate((mp.ukf.x, np.array([MOMENT, timeCost])))  # 输出的结果
+
+        # 计算NEES值
+        # xtruth = np.array([0.1, 0.1, 0.04, 1, 0, 0, 0])
+        # xes = self.ukf.x
+        # p = self.ukf.P
+        # nees = np.dot((xtruth - xes).T, linalg.inv(p)).dot(xtruth - xes)
+        # print('mean NEES is: ', nees)
 
 
 def plotError(mp, slavePlot=0):
@@ -119,14 +127,14 @@ def plotError(mp, slavePlot=0):
 
 if __name__ == '__main__':
     # 多进程之间共享数据
-    magOriginDataShare = multiprocessing.Array('f', range(27))
-    magBgDataShare = multiprocessing.Array('f', range(27))
-    magSmoothData = multiprocessing.Array('f', range(27))
-    magPredictData = multiprocessing.Array('f', range(27))
+    B0 = multiprocessing.Array('f', range(27))
+    Bg = multiprocessing.Array('f', range(27))
+    Bs = multiprocessing.Array('f', range(27))
+    Bpre = multiprocessing.Array('f', range(27))
     state = multiprocessing.Array('f', range(9))  #x, y, z, q0, q1, q2, q3, moment, timeCost
 
     # 读取sensor数据
-    pRead = multiprocessing.Process(target=readSerial, args=(magOriginDataShare, magSmoothData))
+    pRead = multiprocessing.Process(target=readSerial, args=(B0, Bs, Bg))
     pRead.daemon = True
     pRead.start()
 
@@ -136,12 +144,12 @@ if __name__ == '__main__':
     mp = MagPredictor()
 
     # 启动mag3D视图
-    # pMagViewer = multiprocessing.Process(target=magViewer, args=(state,))
-    # pMagViewer.daemon = True
-    # pMagViewer.start()
+    pMagViewer = multiprocessing.Process(target=magViewer, args=(state,))
+    pMagViewer.daemon = True
+    pMagViewer.start()
 
     # 实时显示sensor的值
-    # plotBwindow = multiprocessing.Process(target=plotB, args=(magOriginDataShare, (1, 5, 9), state))
+    # plotBwindow = multiprocessing.Process(target=plotB, args=(B0, (1, 5, 9), state))
     # plotBwindow.daemon = True
     # plotBwindow.start()
 
@@ -150,9 +158,25 @@ if __name__ == '__main__':
     # threadplotError.start()
 
     # 显示3D轨迹
-    trajectory = multiprocessing.Process(target=track3D, args=(state,))
-    trajectory.daemon = True
-    trajectory.start()
+    # trajectory = multiprocessing.Process(target=track3D, args=(state,))
+    # trajectory.daemon = True
+    # trajectory.start()
 
+    # 开始预测
     while True:
-        mp.run(magSmoothData, state)
+        mp.run(Bs, Bg, state)
+
+    # 使用模拟的实测结果，测试UKF滤波器的参数设置是否合理
+    # B = h([0.1, 0.1, 0.04, 1, 0, 0, 0])  # 模拟数据的中间值
+    # n = 100  # 数据个数
+    # # std = 2
+    # Bsim = np.zeros((27, n))
+    #
+    # for j in range(27):
+    #     std = math.sqrt(math.exp(-8) * B[j] ** 2 - 2 * math.exp(-6) * B[j] + 0.84) * 2
+    #     Bsim[j, :] = np.random.normal(B[j], std, n)
+    #
+    # for i in range(n):
+    #     print('=========={}=========='.format(i))
+    #     mp.run(Bsim[:, i], state)
+        # time.sleep(0.5)

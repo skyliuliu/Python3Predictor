@@ -19,7 +19,7 @@ SENSORLOC = np.array(  # sensor的分布
      [-DISTANCE, -DISTANCE, 0], [0, -DISTANCE, 0], [DISTANCE, -DISTANCE, 0]])
 
 
-def readSerial(magOriginData, magSmoothData, slavePlot=4):
+def readSerial(B0, Bs, Bg, slavePlot=0):
     port = list(serial.tools.list_ports.comports())[-1][0]
     ser = serial.Serial(port, 9600, timeout=0.5, parity=serial.PARITY_NONE, rtscts=1)
     navg = 10  # 均值平滑的数据个数
@@ -28,7 +28,6 @@ def readSerial(magOriginData, magSmoothData, slavePlot=4):
     Bnmax = np.zeros((SLAVES, 3, nmax))  # 计算标准差储存的数据
 
     OriginData = np.zeros((SLAVES, 3), dtype=np.float)
-    magBgData = np.zeros((SLAVES, 3), dtype=np.float)
     magOffsetData = np.zeros((SLAVES, 3), dtype=np.float)
     offsetOk = True
     n = 0
@@ -39,16 +38,16 @@ def readSerial(magOriginData, magSmoothData, slavePlot=4):
     fls.Q *= 0.5
     # 使用闭包来评估数据是否满足正态分布
     ftestNormal = testNormal
-
+    # 读取本地保存的背景磁场
     if offsetOk:
         f = open('bg.json', 'r')
         bg = json.load(f)
         for row in range(SLAVES):
             for col in range(3):
-                magBgData[row, col] = bg.get('B{}{}'.format(row, col), 0)
+                Bg[row*3 + col] = bg.get('B{}{}'.format(row, col), 0)
         f.close()
         print('get background B OK!')
-
+    # 持续读取sensor数据
     while True:
         if ser.in_waiting:
             nn = n % nmax
@@ -62,7 +61,7 @@ def readSerial(magOriginData, magSmoothData, slavePlot=4):
             if (not offsetOk) and n < 300:
                 magOffsetData += OriginData
             elif (not offsetOk) and n == 300:
-                magBgData = magOffsetData // 300
+                Bg[:] = magOffsetData.reshape(-1) // 300
                 offsetOk = True
                 print('Calibrate ok!')
 
@@ -70,37 +69,37 @@ def readSerial(magOriginData, magSmoothData, slavePlot=4):
                 bg = {}
                 for row in range(SLAVES):
                     for col in range(3):
-                        bg['B{}{}'.format(row, col)] = magBgData[row, col]
+                        bg['B{}{}'.format(row, col)] = Bg[row*3 + col]
                 f = open('bg.json', 'w')
                 json.dump(bg, f, indent=4)
                 f.close()
             else:
-                OriginData -= magBgData
+                OriginData -= np.array(Bg).reshape(9, 3)
 
-            magOriginData[:] = np.hstack(OriginData)[:]
+            B0[:] = np.hstack(OriginData)[:]
 
             # 使用FixedLagSmoother对原始数据进行平滑
-            fls.smooth(magOriginData[:])
+            fls.smooth(B0[:])
             tmp = np.array(fls.xSmooth[0])
-            magSmoothData[:] = np.array(fls.xSmooth[-1])[0, :]
+            Bs[:] = np.array(fls.xSmooth[-1])[0, :]
 
             # 取navg个点的平均值进行平滑
             # Bnavg += OriginData
             # if n % navg == 0:
-            #     magSmoothData[:] = np.hstack(Bnavg // navg)[:]
+            #     Bs[:] = np.hstack(Bnavg // navg)[:]
             #     Bnavg = np.zeros((SLAVES, 3))
-            #     Bnmax[slavePlot, 2, (n // navg) % (nmax // navg)] = magSmoothData[14]
+            #     Bnmax[slavePlot, 2, (n // navg) % (nmax // navg)] = Bs[14]
 
             # 计算nmax个点的平均值和标准差
-            # Bnmax[slavePlot, 2, nn] = magSmoothData[14]
+            # Bnmax[slavePlot, 1, nn] = Bs[slavePlot * 3 + 1]
             # if nn == 0 and n > 0:
-            #     ftestNormal(Bnmax[slavePlot, 2])
+            #     ftestNormal(Bnmax[slavePlot, 1])
             #     Bnmax = np.zeros((SLAVES, 3, nmax))
 
             n += 1
 
 
-def plotMag(magOriginData, magSmoothData, slavePlot=(1, 5, 9)):
+def plotMag(B0, Bs, slavePlot=(1, 5, 9)):
     app = pg.Qt.QtGui.QApplication([])
     win = pg.GraphicsLayoutWidget(show=True, title="Mag3D Viewer")
     win.resize(1500, 900)
@@ -131,8 +130,8 @@ def plotMag(magOriginData, magSmoothData, slavePlot=(1, 5, 9)):
         n.put(i)
         for slaveIndex, slave in enumerate(slavePlot):
             for Bindex in range(3):
-                datas[slaveIndex * 6 + Bindex * 2].put(magOriginData[(slave - 1) * 3 + Bindex])
-                datas[slaveIndex * 6 + Bindex * 2 + 1].put(magSmoothData[(slave - 1) * 3 + Bindex])
+                datas[slaveIndex * 6 + Bindex * 2].put(B0[(slave - 1) * 3 + Bindex])
+                datas[slaveIndex * 6 + Bindex * 2 + 1].put(Bs[(slave - 1) * 3 + Bindex])
 
         if i > 100:
             n.get()
@@ -149,7 +148,7 @@ def plotMag(magOriginData, magSmoothData, slavePlot=(1, 5, 9)):
         pg.Qt.QtGui.QApplication.instance().exec_()
 
 
-def plotB(magOriginData, slavePlot=(1, 5, 9), state=None):
+def plotB(B0, slavePlot=(1, 5, 9), state=None):
     app = pg.Qt.QtGui.QApplication([])
     win = pg.GraphicsLayoutWidget(show=True, title="Mag3D Viewer")
     win.resize(1500, 900)
@@ -181,7 +180,7 @@ def plotB(magOriginData, slavePlot=(1, 5, 9), state=None):
         n.put(i)
         for slaveIndex, slave in enumerate(slavePlot):
             for Bindex in range(3):
-                datas[slaveIndex * 6 + Bindex * 2].put(magOriginData[(slave - 1) * 3 + Bindex])
+                datas[slaveIndex * 6 + Bindex * 2].put(B0[(slave - 1) * 3 + Bindex])
                 datas[slaveIndex * 6 + Bindex * 2 + 1].put(magPredictData[(slave - 1) * 3 + Bindex])
 
         if i > 100:
@@ -232,7 +231,7 @@ def h(state):
     r = np.linalg.norm(pos, axis=1, keepdims=True)
     posNorm = pos / r
 
-    B = MOMENT * np.multiply(r ** (-3), np.subtract(3 * np.multiply(np.inner(posNorm, mNorm), posNorm),
+    B[:] = MOMENT * np.multiply(r ** (-3), np.subtract(3 * np.multiply(np.inner(posNorm, mNorm), posNorm),
                                                     rotNorm))  # 每个sensor的B值[mGs]
     data = B.reshape(-1)
     return data
@@ -241,14 +240,15 @@ def h(state):
 if __name__ == "__main__":
     # multiprocessing.set_start_method('spawn')
     slavePlot = (1, 5, 9)
-    magOriginData = multiprocessing.Array('f', range(27))
-    magSmoothData = multiprocessing.Array('f', range(27))
+    B0 = multiprocessing.Array('f', range(27))
+    Bs = multiprocessing.Array('f', range(27))
+    Bg = multiprocessing.Array('f', range(27))
 
-    processRead = multiprocessing.Process(target=readSerial, args=(magOriginData, magSmoothData))
+    processRead = multiprocessing.Process(target=readSerial, args=(B0, Bs, Bg))
     processRead.daemon = True
     processRead.start()
 
     time.sleep(0.5)
     while True:
-        plotMag(magOriginData, magSmoothData)
-        # plotB(magOriginData, slavePlot=slavePlot)
+        plotMag(B0, Bs)
+        # plotB(B0, slavePlot=slavePlot)
