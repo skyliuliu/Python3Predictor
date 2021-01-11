@@ -16,7 +16,7 @@ from readData import readSerial, plotB, q2m, SLAVES
 from dataViewer import magViewer
 
 
-class MagPredictor():
+class MagPredictor:
     def __init__(self):
         self.stateNum = 8  # x,y,z,q0,q1,q2,q3, m
         self.distance = 0.12  # sensor之间的距离[m]
@@ -73,15 +73,15 @@ class MagPredictor():
         for i in range(SLAVES * 3):
             # 1.sensor的方差随B的关系式为：Bvar =  2*E(-16)*B^4 - 2*E(-27)*B^3 + 2*E(-8)*B^2 + 1*E(-18)*B + 10
             # Bm = magData[i] + Bg[i]
-            # self.ukf.R[i, i] = (2 * math.exp(-16) * Bm ** 4 - 2 * math.exp(-27) * Bm ** 3 + 2 * math.exp(-8) * Bm * Bm + math.exp(-18) * Bm + 10) * 0.005
+            # self.ukf.R[i, i] = (2 * 10**(-16) * Bm ** 4 - 2 * 10**(-27) * Bm ** 3 + 2 * 10**(-8) * Bm * Bm + 10**(-18) * Bm + 10) * 0.005
 
             # 2.sensor的方差随B的关系式为：Bvar =  1*E(-8)*B^2 - 2*E(-6)*B + 0.84
             Bm = magData[i] + Bg[i]
-            self.ukf.R[i, i] = (math.exp(-8) * Bm ** 2 - 2 * math.exp(-6) * Bm + 0.84) * 2
+            self.ukf.R[i, i] = 10**(-8) * Bm ** 2 - 2 * 10**(-6) * Bm + 0.84
 
             # 3.sensor的方差随B的关系式为：Bvar =  1*E(-8)*B^2 + 6*E(-6)*B + 3.221
             # Bm = magData[i] + Bg[i]
-            # self.ukf.R[i, i] = 1 * math.exp(-8) * Bm ** 2 + 6 * math.exp(-6) * Bm + 3.221
+            # self.ukf.R[i, i] = 10**(-8) * Bm ** 2 + 6 * 10**(-6) * Bm + 3.221
 
         z = np.hstack(magData[:])
 
