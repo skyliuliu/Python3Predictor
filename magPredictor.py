@@ -127,10 +127,10 @@ def plotError(mp, slavePlot=0):
 
 if __name__ == '__main__':
     # 多进程之间共享数据
-    B0 = multiprocessing.Array('f', range(27))
-    Bg = multiprocessing.Array('f', range(27))
-    Bs = multiprocessing.Array('f', range(27))
-    Bpre = multiprocessing.Array('f', range(27))
+    B0 = multiprocessing.Array('f', range(27))  # 原始数据
+    Bg = multiprocessing.Array('f', range(27))  # 背景磁场
+    Bs = multiprocessing.Array('f', range(27))  # 平滑后的数据
+    Bpre = multiprocessing.Array('f', range(27))  # 预测的B值
     state = multiprocessing.Array('f', range(9))  #x, y, z, q0, q1, q2, q3, moment, timeCost
 
     # 读取sensor数据
