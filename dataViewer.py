@@ -7,7 +7,9 @@ from pyqtgraph.dockarea import *
 from PyQt5.QtCore import QRect
 import sys
 import pyqtgraph.opengl as gl
-from math import sqrt, cos, sin, pi, atan2
+from math import sqrt, cos, sin, pi, atan2, acos, asin
+
+from readData import q2m
 
 
 class Mag3DViewer(QWidget):
@@ -244,23 +246,27 @@ class Mag3DViewer(QWidget):
             self.window_showData()
 
 
-def qtoAxisAngle(q0, q1, q2, q3):
-    x = (2 * q1 * q3 - 2 * q0 * q2) / (q0 ** 2 + q1 ** 2 + q2 ** 2 + q3 ** 2)
-    y = (2 * q2 * q3 + 2 * q0 * q1) / (q0 ** 2 + q1 ** 2 + q2 ** 2 + q3 ** 2)
-    z = (q0 ** 2 - q1 ** 2 - q2 ** 2 + q3 ** 2) / (q0 ** 2 + q1 ** 2 + q2 ** 2 + q3 ** 2)
-    angle = np.degrees(np.arccos(z))  # 先得到theta角
-    axis = np.array([-y / sqrt(x ** 2 + y ** 2), x / sqrt(x ** 2 + y ** 2), 0])
-    return axis, angle
+def q2ua(q0, q1, q2, q3):
+    qq = np.linalg.norm([q0, q1, q2, q3])
+    q0 /= qq
+    q1 /= qq
+    q2 /= qq
+    q3 /= qq
+    angle = 2 * acos(q0)
+    u = np.array([q1, q2, q3]) / sin(0.5 * angle)
+    return u, angle * 57.3
 
 
-def getMoment_PolarAngle(q0, q1, q2, q3, realize=False):
-    """Get polar coordinate angle theta, phi"""
-    x = (2 * q1 * q3 - 2 * q0 * q2) / (q0 ** 2 + q1 ** 2 + q2 ** 2 + q3 ** 2)
-    y = (2 * q2 * q3 + 2 * q0 * q1) / (q0 ** 2 + q1 ** 2 + q2 ** 2 + q3 ** 2)
-    z = (q0 ** 2 - q1 ** 2 - q2 ** 2 + q3 ** 2) / (q0 ** 2 + q1 ** 2 + q2 ** 2 + q3 ** 2)
-    theta = np.degrees(np.arccos(z))  # 先得到theta角
-    phi = atan2(y, x) * 57.3
-    return [theta, phi]
+def q2E(q0, q1, q2, q3):
+    qq = np.linalg.norm([q0, q1, q2, q3])
+    q0 /= qq
+    q1 /= qq
+    q2 /= qq
+    q3 /= qq
+    pitch = asin(2 * (q0 * q2 - q1 * q3)) * 57.3
+    roll = atan2(2 * (q0 * q1 + q2 * q3), 1 - 2 * (q1 * q1 + q2 * q2)) * 57.3
+    yaw = atan2(2 * (q0 * q3 + q1 * q2), 1 - 2 * (q2 * q2 + q3 * q3)) * 57.3
+    return pitch, roll, yaw
 
 
 def magViewer(state):
@@ -276,8 +282,9 @@ def magViewer(state):
         nonlocal index
         pos = state[:3]
         q0, q1, q2, q3 = state[3:7]
-        axis, angle = qtoAxisAngle(q0, q1, q2, q3)  # 计算旋转轴和自旋角
-        ori = getMoment_PolarAngle(q0, q1, q2, q3)  # 计算theta和phi
+        axis, angle = q2ua(q0, q1, q2, q3)  # 计算旋转轴和自旋角
+        m = q2m(q0, q1, q2, q3)  # 计算磁矩朝向
+        ori = [acos(m[-1]) * 57.3, atan2(m[1], m[0]) * 57.3]  # 转化为theta和phi
         for i in range(3):
             posTemp[i].put(pos[i])
         for j in range(2):

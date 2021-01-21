@@ -215,8 +215,8 @@ def complement2origin(x):
 
 def q2m(q0, q1, q2, q3):
     qq2 = (q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3)
-    mx = 2 * (-q0 * q2 + q1 * q3) / qq2
-    my = 2 * (q0 * q1 + q2 * q3) / qq2
+    mx = 2 * (q0 * q2 + q1 * q3) / qq2
+    my = 2 * (-q0 * q1 + q2 * q3) / qq2
     mz = (q0 * q0 - q1 * q1 - q2 * q2 + q3 * q3) / qq2
     return [round(mx, 2), round(my, 2), round(mz, 2)]
 

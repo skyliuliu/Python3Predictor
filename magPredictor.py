@@ -144,9 +144,9 @@ if __name__ == '__main__':
     mp = MagPredictor()
 
     # 启动mag3D视图
-    pMagViewer = multiprocessing.Process(target=magViewer, args=(state,))
-    pMagViewer.daemon = True
-    pMagViewer.start()
+    # pMagViewer = multiprocessing.Process(target=magViewer, args=(state,))
+    # pMagViewer.daemon = True
+    # pMagViewer.start()
 
     # 实时显示sensor的值
     # plotBwindow = multiprocessing.Process(target=plotB, args=(B0, (1, 5, 9), state))
@@ -158,9 +158,9 @@ if __name__ == '__main__':
     # threadplotError.start()
 
     # 显示3D轨迹
-    # trajectory = multiprocessing.Process(target=track3D, args=(state,))
-    # trajectory.daemon = True
-    # trajectory.start()
+    trajectory = multiprocessing.Process(target=track3D, args=(state,))
+    trajectory.daemon = True
+    trajectory.start()
 
     # 开始预测
     while True:
