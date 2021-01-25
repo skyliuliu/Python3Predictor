@@ -105,9 +105,8 @@ def LM(state2, output_data, maxIter=100):
         Hessian_LM = A + u * np.eye(n)  # calculating Hessian matrix in LM
         step = np.linalg.inv(Hessian_LM).dot(g)  # calculating the update step
         if np.linalg.norm(step) <= threshold_step:
-            timeCost = (datetime.datetime.now() - t0).total_seconds()
-            state2[:] = np.concatenate((state, np.array([MOMENT, timeCost])))  # 输出的结果
-            return
+            stateOut(state, state2, t0, i, mse)
+            break
         newState = state + step
         newRes = residual(newState, output_data)
         mse = np.linalg.norm(res) ** 2
@@ -127,13 +126,16 @@ def LM(state2, output_data, maxIter=100):
         us.append(u)
         residual_memory.append(mse)
 
-        pos = np.round(state[:3], 3)
-        em = np.round(q2m(*state[3:7]), 3)
-        # print('i={}, pos={}, m={}, mse={:.8e}'.format(i, pos, em, mse))
-        if abs(newMse - mse) < threshold_residual:
-            timeCost = (datetime.datetime.now() - t0).total_seconds()
-            state2[:] = np.concatenate((state, np.array([MOMENT, timeCost])))  # 输出的结果
+        if abs(newMse - mse) < threshold_residual  or i == maxIter:
+            stateOut(state, state2, t0, i, mse)
             return
+
+def stateOut(state, state2, t0, i, mse):
+    timeCost = (datetime.datetime.now() - t0).total_seconds()
+    state2[:] = np.concatenate((state, np.array([MOMENT, timeCost])))  # 输出的结果
+    pos = np.round(state[:3], 3)
+    em = np.round(q2m(*state[3:7]), 3)
+    # print('i={}, pos={}, m={}, mse={:.8e}'.format(i, pos, em, mse))
 
 def generate_data(num_data):
     """

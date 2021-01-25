@@ -168,10 +168,10 @@ def track3D(state):
     plt = gl.GLLinePlotItem(pos=track0, width=2, color=(1, 0, 0, .6))
     w.addItem(plt)
     # orientation arrow
-    sphereData = gl.MeshData.sphere(rows=10, cols=20, radius=0.8)
+    sphereData = gl.MeshData.sphere(rows=20, cols=20, radius=0.3)
     sphereMesh = gl.GLMeshItem(meshdata=sphereData, smooth=True, shader='shaded', glOptions='opaque')
     w.addItem(sphereMesh)
-    ArrowData = gl.MeshData.cylinder(rows=10, cols=20, radius=[0.5, 0.], length=2)
+    ArrowData = gl.MeshData.cylinder(rows=20, cols=20, radius=[0.2, 0.], length=0.7)
     ArrowMesh = gl.GLMeshItem(meshdata=ArrowData, smooth=True, color=(1, 0, 0, 0.6), shader='balloon',
                               glOptions='opaque')
     ArrowMesh.rotate(90, 0, 1, 0)

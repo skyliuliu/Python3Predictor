@@ -27,7 +27,7 @@ y , z）和姿态（四元数q0, q1, q2, q3）
 | EPMPredictor.py    | 专用于预测外部磁体                                                                                                                                                              |
 | requirements.txt   | 依赖的第三方库名称                                                                                                                                                              |
 | PFPredictor.py     | 使用粒子滤波预测磁矩的位置和方向（效果不好，未使用）                                                                                                                                |
-| LMPredictor.py     | 使用LM优化算法计算磁矩的位置和方向                                                                                                                                               |
+| LMPredictor.py     | 使用LM优化算法计算磁矩的位置和方向（效果不错，比UKF精准）                                                                                                                           |
 
 ## 5. 使用步骤
 （1）在readData.py配置好相应的参数<br>
