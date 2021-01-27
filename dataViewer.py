@@ -179,7 +179,7 @@ class Mag3DViewer(QWidget):
         self.text_Rottext += " theta= %d°, phi= %d°\n\n std=(%.2f, %.2f)°" % \
                              (self.MagPolarAngle[0], self.MagPolarAngle[1], self.stdOri[0], self.stdOri[1])
         self.text_Mtext += "  %.2f A*m^2" % self.MagMoment
-        self.text_Timetext = "   %.3f s" % self.timeCost
+        self.text_Timetext = "   %.3f s, n=%d" % self.timeCost
         self.PosText.setText(self.text_Postext)
         self.RotText.setText(self.text_Rottext)
         self.MomentText.setText(self.text_Mtext)
@@ -227,7 +227,7 @@ class Mag3DViewer(QWidget):
     def onRender(self, stateAll):
         if not self._isPause:
             for i in range(self.MagNum):
-                x, y, z, theta, phi, m, timeCost, axis, angle, stdX, stdY, stdZ, stdTheta, stdPhi = stateAll
+                x, y, z, theta, phi, m, timeCost, iters, axis, angle, stdX, stdY, stdZ, stdTheta, stdPhi = stateAll
                 x, y, z, stdX, stdY, stdZ = x * 100, y * 100, z * 100, stdX * 100, stdY * 100, stdZ * 100  # 单位从m变成cm
 
                 self.sphereMesh[i].resetTransform()
@@ -242,7 +242,7 @@ class Mag3DViewer(QWidget):
                 self.MagMoment[i] = m
                 self.MagPolarAngle[0:2, i] = theta, phi
                 self.stdOri[:] = stdTheta, stdPhi
-                self.timeCost = timeCost
+                self.timeCost = (timeCost, iters)
             self.window_showData()
 
 
@@ -298,8 +298,8 @@ def magViewer(state):
         index += 1
 
         std = [np.std(q.queue) for q in posTemp + oriTemp]
-        # x, y, z, theta, phi, m, timeCost, axis, angle, stdX, stdY, stdZ, stdTheta, stdPhi
-        stateAll = state[:3] + ori + state[-2:] + [axis, angle] + std
+        # x, y, z, theta, phi, m, timeCost, iter, axis, angle, stdX, stdY, stdZ, stdTheta, stdPhi
+        stateAll = state[:3] + ori + state[-3:] + [axis, angle] + std
         magViewer.onRender(stateAll)
 
     t = QtCore.QTimer()

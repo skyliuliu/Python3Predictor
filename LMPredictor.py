@@ -9,12 +9,11 @@ from readData import q2m, h, SLAVES, MOMENT, readSerial
 from dataViewer import magViewer
 from trajectoryView import track3D
 
-
 tao = 1e-3
 delta = 0.0001
-threshold_stop = 1e-15
-threshold_step = 1e-15
-threshold_residual = 1e-6
+threshold_stop = 1e-9
+threshold_step = 1e-6
+threshold_residual = 1e-3
 residual_memory = []
 us = []
 
@@ -29,14 +28,15 @@ def derive(state, param_index):
     state1 = state.copy()
     state2 = state.copy()
     if param_index < 3:
-        state1[param_index] += 0.0003
-        state2[param_index] -= 0.0003
+        delta = 0.0003
     else:
-        state1[param_index] += 0.001
-        state2[param_index] -= 0.001
+        delta = 0.001
+    state1[param_index] += delta
+    state2[param_index] -= delta
     data_est_output1 = h(state1)
     data_est_output2 = h(state2)
     return 0.5 * (data_est_output1 - data_est_output2) / delta
+
 
 def jacobian(state, m):
     """
@@ -51,6 +51,7 @@ def jacobian(state, m):
         J[:, pi] = derive(state, pi)
     return J
 
+
 def residual(state, output_data):
     """
     计算残差
@@ -61,6 +62,7 @@ def residual(state, output_data):
     data_est_output = h(state)
     residual = output_data - data_est_output
     return residual
+
 
 def get_init_u(A, tao):
     """
@@ -75,6 +77,7 @@ def get_init_u(A, tao):
         Aii.append(A[i, i])
     u = tao * max(Aii)
     return u
+
 
 def LM(state2, output_data, maxIter=100):
     """
@@ -101,41 +104,52 @@ def LM(state2, output_data, maxIter=100):
 
     for i in range(maxIter):
         i += 1
-
-        Hessian_LM = A + u * np.eye(n)  # calculating Hessian matrix in LM
-        step = np.linalg.inv(Hessian_LM).dot(g)  # calculating the update step
-        if np.linalg.norm(step) <= threshold_step:
+        while True:
+            Hessian_LM = A + u * np.eye(n)  # calculating Hessian matrix in LM
+            step = np.linalg.inv(Hessian_LM).dot(g)  # calculating the update step
+            if np.linalg.norm(step) <= threshold_step:
+                stateOut(state, state2, t0, i, mse)
+                # print('threshold_step')
+                return
+            newState = state + step
+            newRes = residual(newState, output_data)
+            mse = np.linalg.norm(res) ** 2
+            newMse = np.linalg.norm(newRes) ** 2
+            rou = (mse - newMse) / (step.T.dot(u * step + g))
+            if rou > 0:
+                state = newState
+                res = newRes
+                J = jacobian(state, m)
+                A = J.T.dot(J)
+                g = J.T.dot(res)
+                u *= max(1 / 3, 1 - (2 * rou - 1) ** 3)
+                v = 2
+                stop = (np.linalg.norm(g, ord=np.inf) <= threshold_stop) or (mse <= threshold_residual)
+                us.append(u)
+                residual_memory.append(mse)
+                if stop:
+                    # print('threshold_stop or threshold_residual')
+                    stateOut(state, state2, t0, i, mse)
+                    return
+                else:
+                    break
+            else:
+                u *= v
+                v *= 2
+                us.append(u)
+                residual_memory.append(mse)
+        if i == maxIter:
+            # print('maxIter_step')
             stateOut(state, state2, t0, i, mse)
-            break
-        newState = state + step
-        newRes = residual(newState, output_data)
-        mse = np.linalg.norm(res) ** 2
-        newMse = np.linalg.norm(newRes) ** 2
-        rou = (mse - newMse) / (step.T.dot(u * step + g))
-        if rou > 0:
-            state = newState
-            res = newRes
-            J = jacobian(state, m)
-            A = J.T.dot(J)
-            g = J.T.dot(res)
-            u *= max(1 / 3, 1 - (2 * rou - 1) ** 3)
-            v = 2
-        else:
-            u *= v
-            v *= 2
-        us.append(u)
-        residual_memory.append(mse)
 
-        if abs(newMse - mse) < threshold_residual  or i == maxIter:
-            stateOut(state, state2, t0, i, mse)
-            return
 
 def stateOut(state, state2, t0, i, mse):
     timeCost = (datetime.datetime.now() - t0).total_seconds()
-    state2[:] = np.concatenate((state, np.array([MOMENT, timeCost])))  # 输出的结果
+    state2[:] = np.concatenate((state, np.array([MOMENT, timeCost, i])))  # 输出的结果
     pos = np.round(state[:3], 3)
     em = np.round(q2m(*state[3:7]), 3)
-    # print('i={}, pos={}, m={}, mse={:.8e}'.format(i, pos, em, mse))
+    # print('i={}, pos={}m, m={}, timeCost={:.3f}s, mse={:.8e}'.format(i, pos, em, timeCost, mse))
+
 
 def generate_data(num_data):
     """
@@ -143,8 +157,8 @@ def generate_data(num_data):
     :param num_data: 数据维度
     :return: 模拟的B值, (27, )
     """
-    Bmid = h([0, 0.1, 0.2, 1, 1, 1, 0])  # 模拟数据的中间值
-    std = 1
+    Bmid = h([0.1, -0.2, 0.6, 1, 1, 0, 0])  # 模拟数据的中间值
+    std = 20
     Bsim = np.zeros(num_data)
 
     for j in range(num_data):
@@ -152,26 +166,35 @@ def generate_data(num_data):
         Bsim[j] = np.random.normal(Bmid[j], std, 1)
     return Bsim
 
+
 def sim():
     m, n = 27, 7
-    state0 = np.array([0, 0, 0.04, 1, 0, 0, 0])  # 初始值
+    state0 = np.array([0, 0, 0.04, 1, 0, 0, 0, MOMENT, 0])  # 初始值
     output_data = generate_data(m)
     # run
-    LM(state0, output_data, maxIter=50)
-    print(us)
+    LM(state0, output_data, maxIter=150)
     # plot residual
-    plt.plot(residual_memory)
-    plt.xlabel("iter")
-    plt.ylabel("residual")
+    fig = plt.figure(figsize=(16, 5))
+    ax1 = fig.add_subplot(121)
+    ax2 = fig.add_subplot(122)
+    # plt.plot(residual_memory)
+    ax1.set_xlabel("iter")
+    ax1.set_ylabel("residual")
+    ax1.semilogy(residual_memory)
+    ax2.set_xlabel("iter")
+    ax2.set_ylabel("u")
+    ax2.semilogy(us)
     plt.show()
 
-if __name__ == '__main__':
+
+def main():
     # 多进程之间共享数据
     B0 = multiprocessing.Array('f', range(27))
     Bg = multiprocessing.Array('f', range(27))
     Bs = multiprocessing.Array('f', range(27))
     Bpre = multiprocessing.Array('f', range(18))
-    state = multiprocessing.Array('f', [0, 0, 0.04, 1, 0.001, 0, 0, 0.3, 0])  # x, y, z, q0, q1, q2, q3, moment, costTime
+    # x, y, z, q0, q1, q2, q3, moment, costTime, iter
+    state = multiprocessing.Array('f', [0, 0, 0.04, 1, 0.001, 0, 0, 0.3, 0, 1])
 
     # 读取sensor数据
     pRead = multiprocessing.Process(target=readSerial, args=(B0, Bs, Bg))
@@ -194,5 +217,8 @@ if __name__ == '__main__':
 
     # 开始预测
     while True:
-        # print('-------------------------------')
         LM(state, Bs)
+
+
+if __name__ == '__main__':
+    main()

@@ -65,7 +65,7 @@ class MagPredictor():
         self.ukf.update(z)
         timeCost = (datetime.datetime.now() - t0).total_seconds()
 
-        state[:] = np.concatenate((mp.ukf.x, np.array([MOMENT, timeCost])))  # 输出的结果
+        state[:] = np.concatenate((mp.ukf.x, np.array([MOMENT, timeCost, 1])))  # 输出的结果
 
         # 计算NEES值
         # xtruth = np.array([0.1, 0.1, 0.04, 1, 0, 0, 0])
@@ -131,7 +131,7 @@ if __name__ == '__main__':
     Bg = multiprocessing.Array('f', range(27))  # 背景磁场
     Bs = multiprocessing.Array('f', range(27))  # 平滑后的数据
     Bpre = multiprocessing.Array('f', range(27))  # 预测的B值
-    state = multiprocessing.Array('f', range(9))  #x, y, z, q0, q1, q2, q3, moment, timeCost
+    state = multiprocessing.Array('f', range(10))  #x, y, z, q0, q1, q2, q3, moment, timeCost, iter
 
     # 读取sensor数据
     pRead = multiprocessing.Process(target=readSerial, args=(B0, Bs, Bg))
@@ -144,9 +144,9 @@ if __name__ == '__main__':
     mp = MagPredictor()
 
     # 启动mag3D视图
-    # pMagViewer = multiprocessing.Process(target=magViewer, args=(state,))
-    # pMagViewer.daemon = True
-    # pMagViewer.start()
+    pMagViewer = multiprocessing.Process(target=magViewer, args=(state,))
+    pMagViewer.daemon = True
+    pMagViewer.start()
 
     # 实时显示sensor的值
     # plotBwindow = multiprocessing.Process(target=plotB, args=(B0, (1, 5, 9), state))
@@ -158,9 +158,9 @@ if __name__ == '__main__':
     # threadplotError.start()
 
     # 显示3D轨迹
-    trajectory = multiprocessing.Process(target=track3D, args=(state,))
-    trajectory.daemon = True
-    trajectory.start()
+    # trajectory = multiprocessing.Process(target=track3D, args=(state,))
+    # trajectory.daemon = True
+    # trajectory.start()
 
     # 开始预测
     while True:

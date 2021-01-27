@@ -249,6 +249,4 @@ if __name__ == "__main__":
     processRead.start()
 
     time.sleep(0.5)
-    while True:
-        plotMag(B0, Bs)
-        # plotB(B0, slavePlot=slavePlot)
+    plotMag(B0, Bs)
