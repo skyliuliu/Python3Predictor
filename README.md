@@ -22,12 +22,13 @@ y , z）和姿态（四元数q0, q1, q2, q3）
 | dataViewer.py      | 3D显示磁矩的位置和姿态                                                                                                                                                          |
 | momentPredictor.py | 预测磁矩的大小，用于磁矩未知的对象，获得磁矩值                                                                                                                                     |
 | trajectoryView.py  | 3D显示磁矩的运动轨迹                                                                                                                                                            |
-| sensorVar.xlsx     | 传感器噪声随着外加磁场的测试结果                                                                                                                                                 |
+| sensorVar.xlsx     | 传感器噪声R随着外加磁场B变化的测试结果                                                                                                                                            |
 | bg.json            | 保存的背景磁场                                                                                                                                                                 |
-| EPMPredictor.py    | 专用于预测外部磁体                                                                                                                                                              |
+| EPMPredictor.py    | 专用于预测外部磁体（EPM）                                                                                                                                                       |
 | requirements.txt   | 依赖的第三方库名称                                                                                                                                                              |
 | PFPredictor.py     | 使用粒子滤波预测磁矩的位置和方向（效果不好，未使用）                                                                                                                                |
 | LMPredictor.py     | 使用LM优化算法计算磁矩的位置和方向（效果不错，比UKF精准）                                                                                                                           |
+| LMPredictor2.py    | 内置式磁定位，预测EPM                                                                                                                                                           |
 
 ## 5. 使用步骤
 （1）在readData.py配置好相应的参数<br>

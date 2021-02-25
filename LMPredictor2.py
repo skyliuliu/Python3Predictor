@@ -126,6 +126,8 @@ def LM(state2, output_data, maxIter=100):
     mse = 0
 
     for i in range(maxIter):
+        poss.append(state[:3])
+        ems.append(state[3:])
         i += 1
         while True:
             Hessian_LM = A + u * np.eye(n)  # calculating Hessian matrix in LM
@@ -141,8 +143,6 @@ def LM(state2, output_data, maxIter=100):
             rou = (mse - newMse) / (step.T.dot(u * step + g))
             if rou > 0:
                 state = newState
-                poss.append(state[:3])
-                ems.append(state[3:])
                 res = newRes
                 J = jacobian(state, m)
                 A = J.T.dot(J)
@@ -197,9 +197,9 @@ def sim():
     m, n = 6, 6
     state0 = np.array([0, 0, 0.3, 0, 0, 1, MOMENT, 0, 0])  # 初始值
     # 真实值
-    states = [np.array([0.2, -0.2, 0.4, 0, 0, 1]),
+    states = [np.array([0.2, -0.2, 0.4, 0, 1, 0]),
               np.array([0.2, -0.2, 0.4, 0, 0.7, 0.7])]
-    for i in range(2):
+    for i in range(1):
         # run
         output_data = generate_data(m, states[i])
         LM(state0, output_data, maxIter=150)
@@ -239,7 +239,7 @@ def plotP(state0, state, index):
     pos2[0], pos2[1] = pos[1] + index, pos[2]  # 预测的坐标值
 
     # plt.axis('equal')
-    plt.ylim(0.2, 0.5)
+    # plt.ylim(0.2, 0.5)
     plt.gca().set_aspect('equal', adjustable='box')
     plt.plot(pos2[0], pos2[1], 'b+')
     plt.text(pos2[0], pos2[1], int(index * 10), fontsize=9)
