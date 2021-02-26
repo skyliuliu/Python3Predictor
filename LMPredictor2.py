@@ -22,24 +22,53 @@ ems = []
 SLAVES = 2
 MOMENT = 2169
 DISTANCE = 0.02
-SENSORLOC = np.array([[0, 0, 0], [0, 0, DISTANCE]])
+SENSORLOC = np.array([[0, 0, DISTANCE]]).T
+EPM = np.array([[0, 0, 1]]).T
 
 def h(state):
-    B = np.zeros((SLAVES, 3))
-    pos, em = state[0: 3], state[3:]
-    emNorm = np.linalg.norm(em, axis=0, keepdims=True)
-    em /= emNorm
-    mNorm = np.array([em])
-    rotNorm = np.array([em] * SLAVES)
+    '''
+    以外部大磁体为参考系，得出胶囊内sensor的读数
+    :param state: 胶囊的位姿状态
+    :param EPM: 外部大磁体的朝向
+    :return: 两个sensor的读数 (6, )
+    '''
+    EPMNorm = np.linalg.norm(EPM)
+    eEPM = EPM / EPMNorm
 
-    pos = np.array([pos] * SLAVES) - SENSORLOC
-    r = np.linalg.norm(pos, axis=1, keepdims=True)
-    posNorm = pos / r
+    pos, q = state[0: 3], state[3:]
+    R = q2R(q)
+    d = np.dot(R.T, SENSORLOC * 0.5)  # 胶囊坐标系下的sensor位置矢量转换到EPM坐标系
 
-    B[:] = MOMENT * np.multiply(r ** (-3), np.subtract(3 * np.multiply(np.inner(posNorm, mNorm), posNorm),
-                                                    rotNorm))  # 每个sensor的B值[mGs]
-    data = B.reshape(-1)
-    return data
+    r1 = pos.reshape(3, 1) + d
+    r2 = pos.reshape(3, 1) - d
+    r1Norm = np.linalg.norm(r1)
+    r2Norm = np.linalg.norm(r2)
+    er1 = r1 / r1Norm
+    er2 = r2 / r2Norm
+
+    # 每个sensor的B值[mGs]
+    B1 = MOMENT * np.dot(r1Norm ** (-3), np.subtract(3 * np.dot(np.inner(er1, eEPM), er1), eEPM))
+    B2 = MOMENT * np.dot(r2Norm ** (-3), np.subtract(3 * np.dot(np.inner(er2, eEPM), er2), eEPM))
+
+    B1s = np.dot(R, B1)
+    B2s = np.dot(R, B2)
+
+    return np.vstack((B1s, B2s)).reshape(-1)
+
+def q2R(q):
+    '''
+    从四元数求旋转矩阵
+    :param q: 四元数
+    :return: R 旋转矩阵
+    '''
+    q0, q1, q2, q3 = q / np.linalg.norm(q)
+    R = np.array([
+        [1 - 2 * q2 * q2 - 2 * q3 * q3, 2 * q1 * q2 - 2 * q0 * q3,     2 * q1 * q3 + 2 * q0 * q2],
+        [2 * q1 * q2 + 2 * q0 * q3,     1 - 2 * q1 * q1 - 2 * q3 * q3, 2 * q2 * q3 - 2 * q0 * q1],
+        [2 * q1 * q3 - 2 * q0 * q2,     2 * q2 * q3 + 2 * q0 * q1,     1 - 2 * q1 * q1 - 2 * q2 * q2]
+    ])
+    return R
+
 
 def derive(state, param_index):
     """
@@ -102,19 +131,19 @@ def get_init_u(A, tao):
     return u
 
 
-def LM(state2, output_data, maxIter=100):
+def LM(state2, output_data, n, maxIter=100):
     """
     Levenberg–Marquardt优化算法的主体
     :param state2: 预估的状态量 (n, ) + [moment, costTime]
     :param output_data: 观测量 (m, )
+    :param n: 状态量的维度
     :param maxIter: 最大迭代次数
     :return: None
     """
     output_data = np.array(output_data)
-    state = np.array(state2)[:6]
+    state = np.array(state2)[:n]
     t0 = datetime.datetime.now()
     m = output_data.shape[0]
-    n = state.shape[0]
     res = residual(state, output_data)
     J = jacobian(state, m)
     A = J.T.dot(J)
@@ -172,8 +201,10 @@ def stateOut(state, state2, t0, i, mse):
     timeCost = (datetime.datetime.now() - t0).total_seconds()
     state2[:] = np.concatenate((state, np.array([MOMENT, timeCost, i])))  # 输出的结果
     pos = np.round(state[:3], 3)
-    em = np.round(state[3:6], 3)
-    print('i={}, pos={}m, em={}, timeCost={:.3f}s, mse={:.8e}'.format(i, pos, em, timeCost, mse))
+    R = q2R(state[3:7])
+    emx = np.round(R[0, :], 3)
+    emz = np.round(R[-1, :], 3)
+    print('i={}, pos={}m, emx={}, emz={}, timeCost={:.3f}s, mse={:.8e}'.format(i, pos, emx, emz, timeCost, mse))
 
 
 
@@ -181,7 +212,7 @@ def generate_data(num_data, state):
     """
     生成模拟数据
     :param num_data: 数据维度
-    :return: 模拟的B值, (27, )
+    :return: 模拟的B值, (num_data, )
     """
     Bmid = h(state)  # 模拟数据的中间值
     std = 10
@@ -194,16 +225,16 @@ def generate_data(num_data, state):
 
 
 def sim():
-    m, n = 6, 6
-    state0 = np.array([0, 0, 0.3, 0, 0, 1, MOMENT, 0, 0])  # 初始值
+    m, n = 6, 7
+    state0 = np.array([-0.1, 0.2, -0.5, 1, 0, 0, 0, MOMENT, 0, 0])  # 初始值
     # 真实值
-    states = [np.array([0.2, -0.2, 0.4, 0, 1, 0]),
-              np.array([0.2, -0.2, 0.4, 0, 0.7, 0.7])]
+    states = [np.array([0, 0.5, -0.3, 1, 0, 0, 0]),
+              np.array([0.2, -0.2, 0.4, 0, 0.7, 0.7, 1])]
     for i in range(1):
         # run
         output_data = generate_data(m, states[i])
-        LM(state0, output_data, maxIter=150)
-        # plot residual
+        LM(state0, output_data, n, maxIter=150)
+        # plot poss and ems
         iters = len(poss)
         for j in range(iters):
             state00 = np.concatenate((poss[j], ems[j]))
@@ -231,10 +262,11 @@ def plotLM(residual_memory, us):
     plt.show()
 
 def plotP(state0, state, index):
-    pos, em = state0[:3], state0[3:]
+    pos, q = state0[:3], state0[3:]
+    em = q2R(q)[-1, :]
     xtruth = state.copy()[:3]
     xtruth[1] += index  # 获取坐标真实值
-    mtruth = state.copy()[3:]  # 获取姿态真实值
+    mtruth = q2R(state.copy()[3:])[-1, :]  # 获取姿态真实值
     pos2 = np.zeros(2)
     pos2[0], pos2[1] = pos[1] + index, pos[2]  # 预测的坐标值
 
@@ -289,7 +321,7 @@ def main():
 
     # 开始预测
     while True:
-        LM(state, Bs)
+        LM(state, Bs, 7)
 
 
 if __name__ == '__main__':
