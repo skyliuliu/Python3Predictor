@@ -228,8 +228,8 @@ def sim():
     m, n = 6, 7
     state0 = np.array([-0.1, 0.2, -0.5, 1, 0, 0, 0, MOMENT, 0, 0])  # 初始值
     # 真实值
-    states = [np.array([0, 0.5, -0.3, 1, 0, 0, 0]),
-              np.array([0.2, -0.2, 0.4, 0, 0.7, 0.7, 1])]
+    states = [np.array([0, 0.5, -0.5, 1, 1, 0, 0]),
+              np.array([0.2, -0.2, -0.4, 0, 0.7, 0.7, 1])]
     for i in range(1):
         # run
         output_data = generate_data(m, states[i])
@@ -288,7 +288,12 @@ def plotP(state0, state, index):
     # 添加坐标轴标识
     plt.xlabel('iter/1')
     plt.ylabel('pos/m')
+    # 添加网格线
     plt.gca().grid(b=True)
+    # 最大化窗口
+    mng = plt.get_current_fig_manager()
+    mng.window.state('zoomed')
+    # 增加固定时间间隔
     plt.pause(0.05)
 
 def main():

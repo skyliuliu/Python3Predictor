@@ -14,10 +14,14 @@ from filterpy.monte_carlo import systematic_resample
 from numpy.linalg import norm
 import scipy.stats
 
-from readData import readSerial, plotB, q2m, SLAVES, SENSORLOC
+from readData import readSerial, plotB, q2m, SLAVES, MOMENT
 from dataViewer import magViewer
 
 stateNum = 3
+DISTANCE = 0.12
+num_sensor = 3
+SENSORLOC = np.array(  # sensor的分布
+    [[-DISTANCE, DISTANCE, 0], [0, 0, 0], [DISTANCE, -DISTANCE, 0]])
 
 def create_uniform_particles(x_range, y_range, z_range, m_range, N):
     particles = np.empty((N, stateNum))
@@ -48,27 +52,36 @@ def predict(particles, dt=0.03):
     particles[:, 2] += randn(n) * 0.001 * dt  # 位置z的过程误差
     # particles[:, 3] += randn(n) * 0.001  # 磁矩m的过程误差
     # particles[:, 4] += randn(n) * 0.001  # x方向单位矢量ex的过程误差
-    # particles[:, 5] += randn(n) * 0.001  # y方向单位矢量ex的过程误差
-    # particles[:, 6] += randn(n) * 0.001  # z方向单位矢量ex的过程误差
+    # particles[:, 5] += randn(n) * 0.001  # y方向单位矢量ey的过程误差
+    # particles[:, 6] += randn(n) * 0.001  # z方向单位矢量ez的过程误差
 
 def update(particles, weights, z, R):
+    weights.fill(1)
+    n = len(particles)
+    z = z.reshape(1, num_sensor * 3)
 
-    weights.fill(1.)
-    for i,sensor in enumerate(SENSORLOC):
-        B_array = h(particles, sensor)
-        for j in range(3):
-            zi = z[i * 3 + j]
-            weights *= scipy.stats.norm(B_array[:, j], R).pdf(z[i * 3 + j])
-    weights += 1.e-300  # avoid round-off to zero
-    weights /= sum(weights)  # normalize
+    B_ps = np.zeros((n, num_sensor * 3))
+    for i, sensor in enumerate(SENSORLOC):
+        B_ps[:, i * 3 : (i + 1) * 3] = h(particles, sensor)
+        # for j in range(3):
+        #     weights *= scipy.stats.norm(B_array[:, j], R).pdf(z[i * 3 + j])
+
+    deltaB = np.linalg.norm(B_ps - z, axis=1, keepdims=True).reshape(-1)
+    weights *= 1 / deltaB
+    weights /= sum(weights)
+    pass
+
+    # weights += 1.e-300  # avoid round-off to zero
+    # weights /= sum(weights)  # normalize
 
 def h(particles, sensor):
     '''
     计算n个粒子在对应sensor处的B值
     :param particles: 粒子群，n * stateNum，包含每个粒子状态
-    :param sensor: sensor坐标 1*3的数组
+    :param sensor: sensor坐标 [1*3的数组]
     :return: B值数组 n*3
     '''
+    moment = 0.3
     n = len(particles)
     B = np.zeros((n, 3))
 
@@ -76,9 +89,8 @@ def h(particles, sensor):
         # moment = particles[i, 3]
         # eNorm = np.linalg.norm(particles[i, -3:], axis=0, keepdims=True)
         # mNorm = particles[i, -3:] / eNorm  # 磁矩方向矢量归一化
-        moment = 0.3
-        mNorm = np.array([0, 0, 1])
 
+        mNorm = np.array([0, 0, 1])
         pos = np.array(particles[i, 0: 3]) - sensor
         r = np.linalg.norm(pos, axis=0, keepdims=True)
         posNorm = pos / r  # 位置矢量归一化
@@ -86,6 +98,37 @@ def h(particles, sensor):
         B[i, :] = moment * np.multiply(r ** (-3), np.subtract(3 * np.multiply(np.inner(posNorm, mNorm), posNorm), mNorm))
     # data = B.reshape(-1)
     return B
+
+def h0(state):
+    B = np.zeros((num_sensor, 3))
+    x, y, z, q0, q1, q2, q3 = state[0: 7]
+    mNorm = np.array([q2m(q0, q1, q2, q3)])
+    rotNorm = np.array([q2m(q0, q1, q2, q3)] * num_sensor)
+
+    pos = np.array([[x, y, z]] * num_sensor) - SENSORLOC
+    r = np.linalg.norm(pos, axis=1, keepdims=True)
+    posNorm = pos / r
+
+    B[:] = MOMENT * np.multiply(r ** (-3), np.subtract(3 * np.multiply(np.inner(posNorm, mNorm), posNorm),
+                                                    rotNorm))  # 每个sensor的B值[mGs]
+    data = B.reshape(-1)
+    return data
+
+def generate_data(num_data, state):
+    """
+    生成模拟数据
+    :param num_data: 数据维度
+    :param state: 胶囊的状态
+    :return: 模拟的B值 (num_data, )
+    """
+    Bmid = h0(state)  # 模拟数据的中间值
+    std = 3
+    Bsim = np.zeros(num_data)
+
+    for j in range(num_data):
+        # std = math.sqrt((math.exp(-8) * B[j] ** 2 - 2 * math.exp(-6) * B[j] + 0.84)) * 2
+        Bsim[j] = np.random.normal(Bmid[j], std, 1)
+    return Bsim
 
 def estimate(particles, weights):
     """returns mean and variance of the weighted particles"""
@@ -108,7 +151,7 @@ def resample_from_index(particles, weights, indexes):
     weights[:] = weights[indexes]
     weights.fill (1.0 / len(weights))
 
-def run(N, R, init=None):
+def run(N, R, magSmoothData,init=None):
     if init:
         # 初始状态(x, y, z, m, ex, ey, ez)
         particles = create_gaussian_particles(mean=init, N=N)
@@ -124,10 +167,10 @@ def run(N, R, init=None):
         particlesY = particles[:, 1]
         particlesZ = particles[:, 2]
         # 绘制粒子的3D分布图
-        # ax.scatter(particlesX, particlesY, particlesZ)
-        # plt.show()
+        #ax.scatter(particlesX, particlesY, particlesZ)
+        #plt.show()
         plt.scatter(particlesX, particlesY, color='k', marker=',', s=weights)
-        # plt.show()
+        plt.show()
 
         if neff(weights) < N / 2:
             print('==========systematic_resample=============')
@@ -135,7 +178,7 @@ def run(N, R, init=None):
             resample_from_index(particles, weights, indexes)
         mu, var = estimate(particles, weights)
 
-if __name__ == '__main__':
+def main():
     magOriginData = multiprocessing.Array('f', range(27))
     magSmoothData = multiprocessing.Array('f', range(27))
     magBgDataShare = multiprocessing.Array('f', range(27))
@@ -150,9 +193,18 @@ if __name__ == '__main__':
     time.sleep(3)
     input('go on?')
     init = (0, 0, 0.04, 0.3, 0, 0, 1)
-    run(1000, 3, init=None)
+    run(1000, 3, magSmoothData, init=None)
 
     # 启动mag3D视图
     # pMagViewer = multiprocessing.Process(target=magViewer, args=(state,))
     # pMagViewer.daemon = True
     # pMagViewer.start()
+
+def sim():
+    sim_state = [0, 0, 0.04, 1, 0, 0, 0, MOMENT, 0]
+    sim_data = generate_data(num_sensor * 3, sim_state)
+    run(20, 50, sim_data)
+
+
+if __name__ == '__main__':
+    sim()
