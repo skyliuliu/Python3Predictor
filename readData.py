@@ -120,7 +120,7 @@ def plotMag(B0, Bs, slavePlot=(1, 5, 9)):
             curves.append(cOrigin)
             curves.append(cPredict)
             datas.append(Queue())  # origin
-            datas.append(Queue())  # Predict
+            datas.append(Queue())  # smooth
         win.nextRow()
     i = 0
 
@@ -132,6 +132,57 @@ def plotMag(B0, Bs, slavePlot=(1, 5, 9)):
             for Bindex in range(3):
                 datas[slaveIndex * 6 + Bindex * 2].put(B0[(slave - 1) * 3 + Bindex])
                 datas[slaveIndex * 6 + Bindex * 2 + 1].put(Bs[(slave - 1) * 3 + Bindex])
+
+        if i > 100:
+            n.get()
+            for q in datas:
+                q.get()
+        for (curve, data) in zip(curves, datas):
+            curve.setData(n.queue, data.queue)
+
+    timer = pg.Qt.QtCore.QTimer()
+    timer.timeout.connect(update)
+    timer.start(100)
+
+    if (sys.flags.interactive != 1) or not hasattr(pg.Qt.QtCore, 'PYQT_VERSION'):
+        pg.Qt.QtGui.QApplication.instance().exec_()
+
+def plotMagDelta(B0, Bs, slavePlot=(4, 5, 6)):
+    # 不同sensor之间的B值之差
+    app = pg.Qt.QtGui.QApplication([])
+    win = pg.GraphicsLayoutWidget(show=True, title="Mag3D Viewer")
+    win.resize(1500, 900)
+    win.setWindowTitle("slave {}: origin VS KF".format(slavePlot))
+    pg.setConfigOptions(antialias=True)
+
+    n = Queue()
+    curves = []
+    datas = []  # [s1_Bx_Origin, s1_Bx_Smooth, s1_By_Origin, s1_By_Smooth, ... ]
+    for i in slavePlot:
+        for Bi in ['Bx', 'By', 'Bz']:
+            p = win.addPlot(title='slave {}-{} {}'.format(i, i + 1, Bi))
+            p.addLegend()
+            p.setLabel('left', 'B', units='mG')
+            p.setLabel('bottom', 'points', units='1')
+            cOrigin = p.plot(pen='r', name='Origin')
+            cPredict = p.plot(pen='g', name='Smooth')
+            curves.append(cOrigin)
+            curves.append(cPredict)
+            datas.append(Queue())  # origin
+            datas.append(Queue())  # smooth
+        win.nextRow()
+    i = 0
+
+    def update():
+        nonlocal i
+        i += 1
+        n.put(i)
+        for slaveIndex, slave in enumerate(slavePlot):
+            for Bindex in range(3):
+                B0_delta = B0[(slave - 1) * 3 + Bindex] - B0[slave * 3 + Bindex]
+                Bs_delta = Bs[(slave - 1) * 3 + Bindex] - Bs[slave * 3 + Bindex]
+                datas[slaveIndex * 6 + Bindex * 2].put(B0_delta)
+                datas[slaveIndex * 6 + Bindex * 2 + 1].put(Bs_delta)
 
         if i > 100:
             n.get()

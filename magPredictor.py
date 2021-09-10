@@ -149,9 +149,9 @@ if __name__ == '__main__':
     pMagViewer.start()
 
     # 实时显示sensor的值
-    # plotBwindow = multiprocessing.Process(target=plotB, args=(B0, (1, 5, 9), state))
-    # plotBwindow.daemon = True
-    # plotBwindow.start()
+    plotBwindow = multiprocessing.Process(target=plotB, args=(B0, (1, 5, 9), state))
+    plotBwindow.daemon = True
+    plotBwindow.start()
 
     # 显示残差
     # threadplotError = threading.Thread(target=plotError, args=(mp, 0))
